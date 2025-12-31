@@ -1,14 +1,15 @@
-# luban.config.toml
+# Luban Schema Generator 配置示例
+
 [project]
 tsconfig = "tsconfig.json"
 
 [output]
-path = "configs/defines/reflect/generated.xml"
+path = "output/generated.xml"
 cache_file = ".luban-cache.json"
 
 [[sources]]
 type = "directory"
-path = "src/shared/bevy/visual/trigger"
+path = "src/triggers"
 
 [[base_class_mappings]]
 interface = "EntityTrigger"
@@ -19,5 +20,4 @@ base_class = "TsClass"
 
 [type_mappings]
 Vector3 = "Vector3"
-Vector2 = "Vector2"
 Entity = "long"

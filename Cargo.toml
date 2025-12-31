@@ -38,6 +38,9 @@ glob = "0.3"
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 lto = true
 codegen-units = 1

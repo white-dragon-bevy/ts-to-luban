@@ -2,6 +2,7 @@
 .luban-cache.json
 *.xml
 !tests/fixtures/*.xml
+output/
 
 # IDE
 .idea/
