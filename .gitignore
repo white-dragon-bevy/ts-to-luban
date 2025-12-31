@@ -1,0 +1,9 @@
+/target
+.luban-cache.json
+*.xml
+!tests/fixtures/*.xml
+
+# IDE
+.idea/
+.vscode/
+*.swp

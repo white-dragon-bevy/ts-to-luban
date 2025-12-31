@@ -1,0 +1,44 @@
+[package]
+name = "luban-gen"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance TypeScript to Luban XML Schema generator"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# TypeScript parsing (SWC)
+swc_common = "18"
+swc_ecma_parser = "32"
+swc_ecma_ast = "19"
+
+# Parallel processing
+rayon = "1.10"
+
+# XML generation
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# File hashing
+md-5 = "0.10"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Path handling
+walkdir = "2"
+glob = "0.3"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
