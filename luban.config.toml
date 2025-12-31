@@ -1,0 +1,23 @@
+# luban.config.toml
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "configs/defines/reflect/generated.xml"
+cache_file = ".luban-cache.json"
+
+[[sources]]
+type = "directory"
+path = "src/shared/bevy/visual/trigger"
+
+[[base_class_mappings]]
+interface = "EntityTrigger"
+maps_to = "TsTriggerClass"
+
+[defaults]
+base_class = "TsClass"
+
+[type_mappings]
+Vector3 = "Vector3"
+Vector2 = "Vector2"
+Entity = "long"
