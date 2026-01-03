@@ -1,0 +1,31 @@
+{
+  "name": "@white-dragon-bevy/ts-to-luban",
+  "version": "0.1.0",
+  "description": "High-performance TypeScript to Luban XML Schema generator",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/white-dragon-bevy/ts-to-luban.git"
+  },
+  "bin": {
+    "luban-gen": "bin/luban-gen"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin",
+    "scripts"
+  ],
+  "keywords": [
+    "typescript",
+    "luban",
+    "schema",
+    "generator",
+    "code-generation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14"
+  }
+}

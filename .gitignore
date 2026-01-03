@@ -1,4 +1,5 @@
 /target
+/bin
 .luban-cache.json
 *.xml
 !tests/fixtures/*.xml

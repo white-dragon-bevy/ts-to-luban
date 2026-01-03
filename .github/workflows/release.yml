@@ -16,13 +16,23 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: luban-gen
+            artifact_name: luban-gen
+            asset_name: luban-gen-linux-x64
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: luban-gen.exe
+            artifact_name: luban-gen.exe
+            asset_name: luban-gen-win32-x64.exe
+
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact: luban-gen
+            artifact_name: luban-gen
+            asset_name: luban-gen-darwin-x64
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: luban-gen
+            asset_name: luban-gen-darwin-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -35,24 +45,37 @@ jobs:
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Rename artifact
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
 
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
 
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            x86_64-unknown-linux-gnu/luban-gen
-            x86_64-pc-windows-msvc/luban-gen.exe
-            x86_64-apple-darwin/luban-gen
+            artifacts/luban-gen-linux-x64/luban-gen-linux-x64
+            artifacts/luban-gen-win32-x64.exe/luban-gen-win32-x64.exe
+            artifacts/luban-gen-darwin-x64/luban-gen-darwin-x64
+            artifacts/luban-gen-darwin-arm64/luban-gen-darwin-arm64
