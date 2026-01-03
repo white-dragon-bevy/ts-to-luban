@@ -8,6 +8,8 @@
 - **解析引擎**: SWC (高性能 TypeScript 解析器)
 - **并行处理**: Rayon
 - **配置格式**: TOML
+- **npm 包**: `@white-dragon-bevy/ts-to-luban` (GitHub Packages)
+- **仓库**: https://github.com/white-dragon-bevy/ts-to-luban
 
 ## 快速命令
 
@@ -108,3 +110,22 @@ parent = "TsTriggerClass"
 - `TsParser` 包含 `Lrc<SourceMap>` 不是 `Sync`，需要在并行闭包中创建新实例
 - 注释附加在 `export` 关键字位置，需要使用 `export.span.lo` 获取
 - `ClassInfo.extends` 字段保留但不再用于 parent 解析
+
+## 发布流程
+
+```bash
+# 1. 更新版本号 (Cargo.toml 和 package.json)
+# 2. 提交并打 tag
+git add . && git commit -m "release: vX.Y.Z"
+git tag vX.Y.Z && git push && git push --tags
+
+# 自动触发:
+# - Release workflow: 构建 linux/windows/macos 二进制 → GitHub Releases
+# - Publish workflow: 发布到 GitHub Packages (@white-dragon-bevy/ts-to-luban)
+```
+
+## CI/CD 文件
+
+- `.github/workflows/release.yml` - 多平台构建和 GitHub Release
+- `.github/workflows/publish-npm.yml` - 发布到 GitHub Packages
+- `.github/workflows/ci.yml` - PR/push 测试

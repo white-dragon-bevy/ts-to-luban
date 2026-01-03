@@ -16,13 +16,28 @@
 
 ## 安装
 
+### 通过 npm (推荐)
+
 ```bash
-# 从源码构建
+# 配置 GitHub Packages registry
+echo "@white-dragon-bevy:registry=https://npm.pkg.github.com" >> ~/.npmrc
+
+# 安装
+npm install @white-dragon-bevy/ts-to-luban
+```
+
+### 从源码构建
+
+```bash
 cargo build --release
 
 # 二进制文件位于
 ./target/release/luban-gen
 ```
+
+### 从 GitHub Releases 下载
+
+前往 [Releases](https://github.com/white-dragon-bevy/ts-to-luban/releases) 下载对应平台的二进制文件。
 
 ## 快速开始
 
@@ -288,6 +303,23 @@ cargo test type_mapper
 
 # 构建发布版本
 cargo build --release
+```
+
+## 发布新版本
+
+```bash
+# 1. 更新版本号
+# 编辑 Cargo.toml 和 package.json 中的 version
+
+# 2. 提交并打 tag
+git add .
+git commit -m "release: vX.Y.Z"
+git tag vX.Y.Z
+git push && git push --tags
+
+# 3. 自动流程
+# - Release workflow: 构建多平台二进制并发布到 GitHub Releases
+# - Publish workflow: 发布到 GitHub Packages
 ```
 
 ## 许可证
