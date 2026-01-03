@@ -6,18 +6,38 @@ tsconfig = "tsconfig.json"
 [output]
 path = "output/generated.xml"
 cache_file = ".luban-cache.json"
+module_name = "triggers"
 
+# 扫描目录
 [[sources]]
 type = "directory"
 path = "src/triggers"
 
-[[base_class_mappings]]
-interface = "EntityTrigger"
-maps_to = "TsTriggerClass"
+# 多个文件（共享同一个输出路径和 module_name）
+# [[sources]]
+# type = "files"
+# paths = ["src/types/events.ts", "src/types/player.ts", "src/types/enemy.ts"]
+# output_path = "output/types.xml"
+# module_name = "types"  # 可选：覆盖默认 module_name，允许空字符串
+
+# 正则匹配设置 parent
+[[parent_mappings]]
+pattern = "Spawn.*"
+parent = "SpawnBase"
+
+[[parent_mappings]]
+pattern = ".*Trigger$"
+parent = "TriggerBase"
+
+# 导入共享包配置
+# - 合并 sources（路径相对于被引用配置解析）
+# - 合并 parent_mappings（根配置优先，相同 pattern 不覆盖）
+[[ref_configs]]
+path = "./shared-pkg/ts-luban.config.toml"
 
 [defaults]
 base_class = "TsClass"
 
 [type_mappings]
 Vector3 = "Vector3"
-Entity = "long"
+Entity = "number"

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "camelCase")]
 pub struct TsConfig {
     #[serde(default)]
+    #[allow(dead_code)]
     pub compiler_options: CompilerOptions,
 }
 
@@ -13,8 +14,10 @@ pub struct TsConfig {
 #[serde(rename_all = "camelCase")]
 pub struct CompilerOptions {
     #[serde(default)]
+    #[allow(dead_code)]
     pub base_url: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub paths: HashMap<String, Vec<String>>,
 }
 
@@ -76,11 +79,13 @@ fn remove_json_comments(input: &str) -> String {
     result
 }
 
+#[allow(dead_code)]
 pub struct PathResolver {
     base_url: PathBuf,
-    paths: Vec<(String, String)>, // (pattern, replacement)
+    paths: Vec<(String, String)>,
 }
 
+#[allow(dead_code)]
 impl PathResolver {
     pub fn new(tsconfig: &TsConfig, project_root: &Path) -> Self {
         let base_url = tsconfig

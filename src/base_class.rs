@@ -1,14 +1,27 @@
-use crate::config::BaseClassMapping;
 use crate::parser::ClassInfo;
+use crate::config::ParentMapping;
+use regex::Regex;
 
 pub struct BaseClassResolver<'a> {
-    mappings: &'a [BaseClassMapping],
     default_base: &'a str,
+    parent_mappings: Vec<(Regex, String)>,
 }
 
 impl<'a> BaseClassResolver<'a> {
-    pub fn new(mappings: &'a [BaseClassMapping], default_base: &'a str) -> Self {
-        Self { mappings, default_base }
+    pub fn new(default_base: &'a str, mappings: &[ParentMapping]) -> Self {
+        let parent_mappings = mappings
+            .iter()
+            .filter_map(|m| {
+                Regex::new(&m.pattern)
+                    .ok()
+                    .map(|re| (re, m.parent.clone()))
+            })
+            .collect();
+
+        Self {
+            default_base,
+            parent_mappings,
+        }
     }
 
     pub fn resolve(&self, class_info: &ClassInfo) -> String {
@@ -17,16 +30,14 @@ impl<'a> BaseClassResolver<'a> {
             return String::new();
         }
 
-        // Check implements clause for matching interface
-        for iface in &class_info.implements {
-            for mapping in self.mappings {
-                if &mapping.interface == iface {
-                    return mapping.maps_to.clone();
-                }
+        // Check parent_mappings regex patterns (config takes priority)
+        for (pattern, parent) in &self.parent_mappings {
+            if pattern.is_match(&class_info.name) {
+                return parent.clone();
             }
         }
 
-        // Use default base class
+        // Otherwise use default base class
         self.default_base.to_string()
     }
 }
@@ -36,71 +47,76 @@ mod tests {
     use super::*;
     use crate::parser::ClassInfo;
 
-    fn make_class(name: &str, implements: Vec<&str>) -> ClassInfo {
+    fn make_class(name: &str) -> ClassInfo {
         ClassInfo {
             name: name.to_string(),
             comment: None,
             fields: vec![],
-            implements: implements.into_iter().map(|s| s.to_string()).collect(),
+            implements: vec![],
             extends: None,
             source_file: String::new(),
             file_hash: String::new(),
             is_interface: false,
+            output_path: None,
+            module_name: None,
         }
     }
 
     #[test]
-    fn test_resolve_from_implements() {
-        let mappings = vec![
-            BaseClassMapping {
-                interface: "EntityTrigger".to_string(),
-                maps_to: "TsTriggerClass".to_string(),
-            },
-        ];
-        let resolver = BaseClassResolver::new(&mappings, "TsClass");
-
-        let class = make_class("MyTrigger", vec!["EntityTrigger"]);
-        assert_eq!(resolver.resolve(&class), "TsTriggerClass");
+    fn test_class_uses_default_parent() {
+        let resolver = BaseClassResolver::new("TsClass", &[]);
+        let class = make_class("MyClass");
+        assert_eq!(resolver.resolve(&class), "TsClass");
     }
 
     #[test]
-    fn test_resolve_default() {
-        let mappings = vec![];
-        let resolver = BaseClassResolver::new(&mappings, "TsClass");
-
-        let class = make_class("MyClass", vec![]);
+    fn test_class_extends_ignored() {
+        // extends is ignored, config takes priority
+        let resolver = BaseClassResolver::new("TsClass", &[]);
+        let mut class = make_class("ChildClass");
+        class.extends = Some("ParentClass".to_string());
+        // Should use default, not extends
         assert_eq!(resolver.resolve(&class), "TsClass");
     }
 
     #[test]
     fn test_interface_no_parent() {
-        let mappings = vec![];
-        let resolver = BaseClassResolver::new(&mappings, "TsClass");
-
-        let mut iface = make_class("MyInterface", vec![]);
+        let resolver = BaseClassResolver::new("TsClass", &[]);
+        let mut iface = make_class("MyInterface");
         iface.is_interface = true;
-
         assert_eq!(resolver.resolve(&iface), "");
     }
 
     #[test]
-    fn test_multiple_mappings() {
+    fn test_parent_mapping_regex() {
         let mappings = vec![
-            BaseClassMapping {
-                interface: "EntityTrigger".to_string(),
-                maps_to: "TsTriggerClass".to_string(),
-            },
-            BaseClassMapping {
-                interface: "Component".to_string(),
-                maps_to: "TsComponentClass".to_string(),
+            ParentMapping {
+                pattern: ".*Trigger$".to_string(),
+                parent: "TsTriggerClass".to_string(),
             },
         ];
-        let resolver = BaseClassResolver::new(&mappings, "TsClass");
+        let resolver = BaseClassResolver::new("TsClass", &mappings);
 
-        let trigger = make_class("MyTrigger", vec!["EntityTrigger"]);
-        let component = make_class("MyComponent", vec!["Component"]);
-
+        let trigger = make_class("DamageTrigger");
         assert_eq!(resolver.resolve(&trigger), "TsTriggerClass");
-        assert_eq!(resolver.resolve(&component), "TsComponentClass");
+
+        let other = make_class("SomeComponent");
+        assert_eq!(resolver.resolve(&other), "TsClass");
+    }
+
+    #[test]
+    fn test_config_takes_priority_over_extends() {
+        let mappings = vec![
+            ParentMapping {
+                pattern: ".*Trigger.*".to_string(),
+                parent: "TsTriggerClass".to_string(),
+            },
+        ];
+        let resolver = BaseClassResolver::new("TsClass", &mappings);
+
+        let mut trigger = make_class("HealTrigger2");
+        trigger.extends = Some("HealTrigger".to_string());
+        // config mapping should take priority over extends
+        assert_eq!(resolver.resolve(&trigger), "TsTriggerClass");
     }
 }

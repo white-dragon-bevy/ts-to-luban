@@ -1,0 +1,18 @@
+# 共享包配置 - 被其他包引用
+
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+# 共享类型目录 - 输出到独立文件
+[[sources]]
+type = "directory"
+path = "types"
+output_path = "output/events.xml"
+
+# 共享的 parent 映射
+[[parent_mappings]]
+pattern = ".*Event$"
+parent = "EventBase"

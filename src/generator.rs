@@ -12,10 +12,10 @@ impl<'a> XmlGenerator<'a> {
         Self { base_resolver, type_mapper }
     }
 
-    pub fn generate(&self, classes: &[ClassInfo]) -> String {
+    pub fn generate(&self, classes: &[ClassInfo], module_name: &str) -> String {
         let mut lines = vec![
             r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
-            r#"<module name="" comment="自动生成的 ts class Bean 定义">"#.to_string(),
+            format!(r#"<module name="{}" comment="自动生成的 ts class Bean 定义">"#, escape_xml(module_name)),
             String::new(),
         ];
 
@@ -80,13 +80,12 @@ fn escape_xml(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-// Convenience function for simple cases
-pub fn generate_xml(classes: &[ClassInfo], default_base: &str) -> String {
-    let mappings = vec![];
-    let base_resolver = BaseClassResolver::new(&mappings, default_base);
+#[cfg(test)]
+fn generate_xml(classes: &[ClassInfo], default_base: &str) -> String {
+    let base_resolver = BaseClassResolver::new(default_base, &[]);
     let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
     let generator = XmlGenerator::new(&base_resolver, &type_mapper);
-    generator.generate(classes)
+    generator.generate(classes, "")
 }
 
 #[cfg(test)]
@@ -120,6 +119,8 @@ mod tests {
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
             is_interface: false,
+            output_path: None,
+            module_name: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -138,6 +139,8 @@ mod tests {
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
             is_interface: false,
+            output_path: None,
+            module_name: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -155,6 +158,8 @@ mod tests {
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
             is_interface: false,
+            output_path: None,
+            module_name: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -174,6 +179,8 @@ mod tests {
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
             is_interface: true,
+            output_path: None,
+            module_name: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");

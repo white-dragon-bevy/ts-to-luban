@@ -20,7 +20,7 @@ impl TypeMapper {
         let mut m = HashMap::new();
 
         // Basic types
-        m.insert("number".to_string(), "int".to_string());
+        m.insert("number".to_string(), "double".to_string());
         m.insert("string".to_string(), "string".to_string());
         m.insert("boolean".to_string(), "bool".to_string());
 
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn test_builtin_type_mapping() {
         let mapper = TypeMapper::new(&HashMap::new());
-        assert_eq!(mapper.map("number"), "int");
+        assert_eq!(mapper.map("number"), "double");
         assert_eq!(mapper.map("string"), "string");
         assert_eq!(mapper.map("boolean"), "bool");
     }
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn test_case_insensitive() {
         let mapper = TypeMapper::new(&HashMap::new());
-        assert_eq!(mapper.map("Number"), "int");
+        assert_eq!(mapper.map("Number"), "double");
         assert_eq!(mapper.map("STRING"), "string");
         assert_eq!(mapper.map("AnyEntity"), "long");
     }
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn test_map_full_type() {
         let mapper = TypeMapper::new(&HashMap::new());
-        assert_eq!(mapper.map_full_type("list,number"), "list,int");
-        assert_eq!(mapper.map_full_type("map,string,number"), "map,string,int");
+        assert_eq!(mapper.map_full_type("list,number"), "list,double");
+        assert_eq!(mapper.map_full_type("map,string,number"), "map,string,double");
     }
 }

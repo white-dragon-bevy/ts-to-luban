@@ -46,25 +46,20 @@ fn main() -> Result<()> {
     println!("Luban Schema Generator v{}", env!("CARGO_PKG_VERSION"));
     println!("{}", "=".repeat(50));
 
-    // Load configuration
-    let config = Config::load(&cli.config)
+    // Load configuration with ref_configs merging
+    let config = Config::load_with_refs(&cli.config)
         .with_context(|| format!("Failed to load config from {:?}", cli.config))?;
 
     let project_root = cli.config.parent().unwrap_or_else(|| std::path::Path::new("."));
 
-    // Load tsconfig for path resolution
+    // Load tsconfig (for future path resolution support)
     let tsconfig_path = project_root.join(&config.project.tsconfig);
-    let tsconfig = TsConfig::load(&tsconfig_path)
+    let _tsconfig = TsConfig::load(&tsconfig_path)
         .with_context(|| format!("Failed to load tsconfig from {:?}", tsconfig_path))?;
-
-    let _path_resolver = tsconfig::PathResolver::new(&tsconfig, project_root);
 
     // Initialize components
     let type_mapper = TypeMapper::new(&config.type_mappings);
-    let base_resolver = BaseClassResolver::new(
-        &config.base_class_mappings,
-        &config.defaults.base_class,
-    );
+    let base_resolver = BaseClassResolver::new(&config.defaults.base_class, &config.parent_mappings);
 
     // Load cache
     let cache_path = project_root.join(&config.output.cache_file);
@@ -75,12 +70,44 @@ fn main() -> Result<()> {
         Cache::load(&cache_path).unwrap_or_default()
     };
 
-    // Collect source directories
-    let mut source_dirs = Vec::new();
+    // Collect source files and directories with their output paths and module names
+    // Note: paths from ref_configs are already resolved as absolute paths
+    let mut source_dirs: Vec<(PathBuf, scanner::ScanConfig, Option<PathBuf>, Option<String>)> = Vec::new();
+    let mut single_files: Vec<(PathBuf, Option<PathBuf>, Option<String>)> = Vec::new();
     for source in &config.sources {
         match source {
-            SourceConfig::Directory { path } => {
-                source_dirs.push(project_root.join(path));
+            SourceConfig::Directory { path, scan_options, output_path, module_name } => {
+                let scan_config = scanner::ScanConfig::from(scan_options);
+                let resolved = if path.is_absolute() { path.clone() } else { project_root.join(path) };
+                if !resolved.exists() {
+                    anyhow::bail!("Source directory not found: {:?}", resolved);
+                }
+                if !resolved.is_dir() {
+                    anyhow::bail!("Source path is not a directory: {:?}", resolved);
+                }
+                source_dirs.push((resolved, scan_config, output_path.clone(), module_name.clone()));
+            }
+            SourceConfig::File { path, output_path, module_name } => {
+                let resolved = if path.is_absolute() { path.clone() } else { project_root.join(path) };
+                if !resolved.exists() {
+                    anyhow::bail!("Source file not found: {:?}", resolved);
+                }
+                if !resolved.is_file() {
+                    anyhow::bail!("Source path is not a file: {:?}", resolved);
+                }
+                single_files.push((resolved, output_path.clone(), module_name.clone()));
+            }
+            SourceConfig::Files { paths, output_path, module_name } => {
+                for path in paths {
+                    let resolved = if path.is_absolute() { path.clone() } else { project_root.join(path) };
+                    if !resolved.exists() {
+                        anyhow::bail!("Source file not found: {:?}", resolved);
+                    }
+                    if !resolved.is_file() {
+                        anyhow::bail!("Source path is not a file: {:?}", resolved);
+                    }
+                    single_files.push((resolved, output_path.clone(), module_name.clone()));
+                }
             }
             SourceConfig::Registration { path } => {
                 // TODO: Parse registration file
@@ -89,21 +116,36 @@ fn main() -> Result<()> {
         }
     }
 
-    // Scan for TypeScript files
-    println!("\n[1/4] Scanning directories...");
-    let ts_files = scanner::scan_directories(&source_dirs)?;
+    // Scan for TypeScript files and track their output paths and module names
+    println!("\n[1/4] Scanning sources...");
+    let mut ts_files: Vec<(PathBuf, Option<PathBuf>, Option<String>)> = Vec::new();
+
+    for (dir, scan_config, output_path, module_name) in &source_dirs {
+        let files = scanner::scan_directory_with_options(dir, scan_config)?;
+        for file in files {
+            ts_files.push((file, output_path.clone(), module_name.clone()));
+        }
+    }
+    ts_files.extend(single_files);
     println!("  Found {} TypeScript files", ts_files.len());
 
-    // Parse files in parallel
+    // Parse files in parallel, setting output_path and module_name for each class
     println!("\n[2/4] Parsing TypeScript files...");
 
     let all_classes: Vec<_> = ts_files
         .par_iter()
-        .filter_map(|path| {
+        .filter_map(|(path, output_path, module_name)| {
             // Create parser per-thread since SourceMap isn't Sync
             let ts_parser = TsParser::new();
             match ts_parser.parse_file(path) {
-                Ok(classes) => Some(classes),
+                Ok(mut classes) => {
+                    // Set output_path and module_name for all classes from this file
+                    for class in &mut classes {
+                        class.output_path = output_path.clone();
+                        class.module_name = module_name.clone();
+                    }
+                    Some(classes)
+                }
                 Err(e) => {
                     eprintln!("  Warning: Failed to parse {:?}: {}", path, e);
                     None
@@ -140,28 +182,48 @@ fn main() -> Result<()> {
 
     println!("  Cached: {}, Updated: {}", unchanged, updated);
 
-    // Generate XML
+    // Generate XML - group by (output_path, module_name)
     println!("\n[4/4] Generating XML...");
     let xml_generator = XmlGenerator::new(&base_resolver, &type_mapper);
-    let xml_output = xml_generator.generate(&final_classes);
 
-    // Write output only if changed
-    let output_path = project_root.join(&config.output.path);
-    let should_write = if output_path.exists() {
-        let existing = std::fs::read_to_string(&output_path)?;
-        existing != xml_output
-    } else {
-        true
-    };
+    // Group classes by (output_path, module_name)
+    let default_output = config.output.path.clone();
+    let default_module = config.output.module_name.clone();
+    let mut grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> = std::collections::HashMap::new();
+    for class in final_classes.iter() {
+        let out_path = class.output_path.clone().unwrap_or_else(|| default_output.clone());
+        let module = class.module_name.clone().unwrap_or_else(|| default_module.clone());
+        grouped.entry((out_path, module)).or_default().push(class);
+    }
 
-    if should_write {
-        if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)?;
+    // Generate and write each group
+    let mut files_written = 0;
+    for ((out_path, module_name), classes) in &grouped {
+        let classes_owned: Vec<_> = classes.iter().map(|c| (*c).clone()).collect();
+        let xml_output = xml_generator.generate(&classes_owned, module_name);
+
+        let resolved_path = project_root.join(out_path);
+        let should_write = if resolved_path.exists() {
+            let existing = std::fs::read_to_string(&resolved_path)?;
+            existing != xml_output
+        } else {
+            true
+        };
+
+        if should_write {
+            if let Some(parent) = resolved_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&resolved_path, &xml_output)?;
+            println!("  Written {} beans to {:?}", classes.len(), resolved_path);
+            files_written += 1;
+        } else {
+            println!("  No changes for {:?}", resolved_path);
         }
-        std::fs::write(&output_path, &xml_output)?;
-        println!("  Written to {:?}", output_path);
-    } else {
-        println!("  No changes, skipping write");
+    }
+
+    if files_written == 0 {
+        println!("  No changes, skipping all writes");
     }
 
     // Save cache
@@ -169,7 +231,7 @@ fn main() -> Result<()> {
 
     let elapsed = start.elapsed();
     println!("\n{}", "=".repeat(50));
-    println!("Done! Generated {} beans in {:?}", final_classes.len(), elapsed);
+    println!("Done! Generated {} beans to {} file(s) in {:?}", final_classes.len(), grouped.len(), elapsed);
 
     Ok(())
 }

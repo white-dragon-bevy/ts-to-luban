@@ -1,0 +1,16 @@
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[sources]]
+type = "directory"
+path = "local-src"
+
+[[parent_mappings]]
+pattern = ".*Trigger$"
+parent = "TriggerBase"
+
+[[ref_configs]]
+path = "../pkg-b/ts-luban.config.toml"

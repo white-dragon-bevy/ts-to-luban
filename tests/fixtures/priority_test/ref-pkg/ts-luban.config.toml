@@ -1,0 +1,13 @@
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[sources]]
+type = "directory"
+path = "ref-src"
+
+[[parent_mappings]]
+pattern = ".*Trigger$"
+parent = "RefTriggerBase"

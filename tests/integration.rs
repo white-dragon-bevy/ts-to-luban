@@ -72,9 +72,9 @@ base_class = "TsClass"
         "Missing SimpleClass bean"
     );
 
-    // Check for DamageTrigger with TsTriggerClass parent
+    // Check for DamageTrigger with TsClass parent (all classes use default parent)
     assert!(
-        output.contains(r#"<bean name="DamageTrigger" parent="TsTriggerClass">"#),
+        output.contains(r#"<bean name="DamageTrigger" parent="TsClass">"#),
         "Missing DamageTrigger bean with correct parent"
     );
 
@@ -86,7 +86,7 @@ base_class = "TsClass"
 
     // Check for map type
     assert!(
-        output.contains(r#"type="map,string,int""#),
+        output.contains(r#"type="map,string,double""#),
         "Missing map type"
     );
 

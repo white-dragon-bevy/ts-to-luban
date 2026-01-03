@@ -49,6 +49,7 @@ impl Cache {
         Ok(json)
     }
 
+    #[allow(dead_code)]
     pub fn get_entry(&self, class_name: &str) -> Option<&CacheEntry> {
         self.entries.get(class_name)
     }
@@ -70,6 +71,7 @@ impl Cache {
             .unwrap_or(false)
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generated_at = Utc::now();

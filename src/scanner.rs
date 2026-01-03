@@ -1,8 +1,29 @@
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use anyhow::Result;
+use crate::config::ScanOptions;
 
+#[derive(Default)]
+pub struct ScanConfig {
+    pub include_dts: bool,
+    pub include_node_modules: bool,
+}
+
+impl From<&ScanOptions> for ScanConfig {
+    fn from(opts: &ScanOptions) -> Self {
+        Self {
+            include_dts: opts.include_dts,
+            include_node_modules: opts.include_node_modules,
+        }
+    }
+}
+
+#[allow(dead_code)]
 pub fn scan_directory(dir: &Path) -> Result<Vec<PathBuf>> {
+    scan_directory_with_options(dir, &ScanConfig::default())
+}
+
+pub fn scan_directory_with_options(dir: &Path, config: &ScanConfig) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in WalkDir::new(dir)
@@ -25,9 +46,8 @@ pub fn scan_directory(dir: &Path) -> Result<Vec<PathBuf>> {
             continue;
         }
 
-        // Exclude declaration files and test files
-        if file_name.ends_with(".d.ts")
-            || file_name.ends_with(".spec.ts")
+        // Exclude test files
+        if file_name.ends_with(".spec.ts")
             || file_name.ends_with(".test.ts")
             || file_name.ends_with(".spec.tsx")
             || file_name.ends_with(".test.tsx")
@@ -35,8 +55,13 @@ pub fn scan_directory(dir: &Path) -> Result<Vec<PathBuf>> {
             continue;
         }
 
-        // Exclude node_modules
-        if path.components().any(|c| c.as_os_str() == "node_modules") {
+        // Exclude declaration files unless configured
+        if !config.include_dts && file_name.ends_with(".d.ts") {
+            continue;
+        }
+
+        // Exclude node_modules unless configured
+        if !config.include_node_modules && path.components().any(|c| c.as_os_str() == "node_modules") {
             continue;
         }
 
@@ -46,11 +71,23 @@ pub fn scan_directory(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+#[allow(dead_code)]
 pub fn scan_directories(dirs: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut all_files = Vec::new();
 
     for dir in dirs {
         let files = scan_directory(dir)?;
+        all_files.extend(files);
+    }
+
+    Ok(all_files)
+}
+
+pub fn scan_directories_with_options(dirs: &[(PathBuf, ScanConfig)]) -> Result<Vec<PathBuf>> {
+    let mut all_files = Vec::new();
+
+    for (dir, config) in dirs {
+        let files = scan_directory_with_options(dir, config)?;
         all_files.extend(files);
     }
 
