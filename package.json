@@ -6,6 +6,9 @@
     "type": "git",
     "url": "git+https://github.com/white-dragon-bevy/ts-to-luban.git"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "bin": {
     "luban-gen": "bin/luban-gen"
   },
