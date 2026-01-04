@@ -191,12 +191,18 @@ export class DamageTrigger {
 
 ### 接口 (interface)
 
-接口生成的 bean **没有 parent 属性**：
+接口默认**没有 parent 属性**，但如果 extends 其他接口则会继承：
 
 ```typescript
+// 无 extends → 无 parent
 export interface Config {
     id: number;
     name: string;
+}
+
+// 有 extends → parent = 父接口名
+export interface SpecialConfig extends Config {
+    extra: string;
 }
 ```
 
@@ -206,6 +212,10 @@ export interface Config {
 <bean name="Config">
     <var name="id" type="double"/>
     <var name="name" type="string"/>
+</bean>
+
+<bean name="SpecialConfig" parent="Config">
+    <var name="extra" type="string"/>
 </bean>
 ```
 
