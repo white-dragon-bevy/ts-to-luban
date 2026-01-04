@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn test_interface_no_parent() {
+    fn test_interface_no_extends_no_parent() {
         let class = ClassInfo {
             name: "MyInterface".to_string(),
             comment: None,
@@ -186,6 +186,25 @@ mod tests {
         let xml = generate_xml(&[class], "TsClass");
         assert!(xml.contains(r#"<bean name="MyInterface">"#));
         assert!(!xml.contains("parent="));
+    }
+
+    #[test]
+    fn test_interface_with_extends_has_parent() {
+        let class = ClassInfo {
+            name: "ChildInterface".to_string(),
+            comment: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: Some("ParentInterface".to_string()),
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: None,
+        };
+
+        let xml = generate_xml(&[class], "TsClass");
+        assert!(xml.contains(r#"<bean name="ChildInterface" parent="ParentInterface">"#));
     }
 
     #[test]

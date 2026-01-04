@@ -25,9 +25,9 @@ impl<'a> BaseClassResolver<'a> {
     }
 
     pub fn resolve(&self, class_info: &ClassInfo) -> String {
-        // Interfaces don't have a parent class
+        // Interfaces: only have parent if they extend another interface
         if class_info.is_interface {
-            return String::new();
+            return class_info.extends.clone().unwrap_or_default();
         }
 
         // Check parent_mappings regex patterns (config takes priority)
@@ -80,11 +80,20 @@ mod tests {
     }
 
     #[test]
-    fn test_interface_no_parent() {
+    fn test_interface_no_extends_no_parent() {
         let resolver = BaseClassResolver::new("TsClass", &[]);
         let mut iface = make_class("MyInterface");
         iface.is_interface = true;
         assert_eq!(resolver.resolve(&iface), "");
+    }
+
+    #[test]
+    fn test_interface_with_extends_has_parent() {
+        let resolver = BaseClassResolver::new("TsClass", &[]);
+        let mut iface = make_class("ChildInterface");
+        iface.is_interface = true;
+        iface.extends = Some("ParentInterface".to_string());
+        assert_eq!(resolver.resolve(&iface), "ParentInterface");
     }
 
     #[test]
