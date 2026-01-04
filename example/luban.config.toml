@@ -13,6 +13,13 @@ module_name = "triggers"
 type = "directory"
 path = "src/triggers"
 
+# Glob 模式匹配（支持 *, **, ? 等通配符）
+# [[sources]]
+# type = "glob"
+# pattern = "src/**/*Trigger.ts"
+# output_path = "output/triggers.xml"  # 可选
+# module_name = "triggers"             # 可选
+
 # 多个文件（共享同一个输出路径和 module_name）
 # [[sources]]
 # type = "files"

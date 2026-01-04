@@ -113,6 +113,18 @@ fn main() -> Result<()> {
                 // TODO: Parse registration file
                 println!("  Registration mode not yet implemented: {:?}", path);
             }
+            SourceConfig::Glob { pattern, output_path, module_name } => {
+                // Resolve pattern relative to project_root if not already absolute
+                let resolved_pattern = if std::path::Path::new(pattern).is_absolute() {
+                    pattern.clone()
+                } else {
+                    project_root.join(pattern).to_string_lossy().to_string()
+                };
+                let files = scanner::expand_glob(&resolved_pattern)?;
+                for file in files {
+                    single_files.push((file, output_path.clone(), module_name.clone()));
+                }
+            }
         }
     }
 

@@ -61,6 +61,13 @@ pub enum SourceConfig {
         #[serde(default)]
         module_name: Option<String>,
     },
+    Glob {
+        pattern: String,
+        #[serde(default)]
+        output_path: Option<PathBuf>,
+        #[serde(default)]
+        module_name: Option<String>,
+    },
     Registration { path: PathBuf },
 }
 
@@ -189,6 +196,19 @@ impl Config {
                     base_dir.join(&path)
                 };
                 SourceConfig::Registration { path: resolved }
+            }
+            SourceConfig::Glob { pattern, output_path, module_name } => {
+                // Prepend base_dir to the pattern for relative patterns
+                let resolved_pattern = if std::path::Path::new(&pattern).is_absolute() {
+                    pattern
+                } else {
+                    base_dir.join(&pattern).to_string_lossy().to_string()
+                };
+                SourceConfig::Glob {
+                    pattern: resolved_pattern,
+                    output_path,
+                    module_name,
+                }
             }
         }
     }
@@ -438,6 +458,58 @@ path = "src/events"
             assert!(output_path.is_none());
         } else {
             panic!("Expected Directory source");
+        }
+    }
+
+    #[test]
+    fn test_parse_glob_source() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[sources]]
+type = "glob"
+pattern = "src/**/*Trigger.ts"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.sources.len(), 1);
+
+        if let SourceConfig::Glob { pattern, output_path, module_name } = &config.sources[0] {
+            assert_eq!(pattern, "src/**/*Trigger.ts");
+            assert!(output_path.is_none());
+            assert!(module_name.is_none());
+        } else {
+            panic!("Expected Glob source");
+        }
+    }
+
+    #[test]
+    fn test_parse_glob_with_options() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[sources]]
+type = "glob"
+pattern = "src/**/*.ts"
+output_path = "output/matched.xml"
+module_name = "matched"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.sources.len(), 1);
+
+        if let SourceConfig::Glob { pattern, output_path, module_name } = &config.sources[0] {
+            assert_eq!(pattern, "src/**/*.ts");
+            assert_eq!(output_path.as_ref().unwrap(), &PathBuf::from("output/matched.xml"));
+            assert_eq!(module_name.as_deref(), Some("matched"));
+        } else {
+            panic!("Expected Glob source");
         }
     }
 }

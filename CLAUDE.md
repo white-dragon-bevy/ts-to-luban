@@ -97,9 +97,19 @@ parent = "TsTriggerClass"
 - `file`: 单个文件
 - `files`: 多个文件（共享 output_path 和 module_name）
 - `directory`: 目录扫描
+- `glob`: Glob 模式匹配（支持 `*`, `**`, `?`, `[abc]`）
 - `registration`: 注册文件（未完全实现）
 
-### 6. Per-Source 配置
+### 6. Glob 模式配置
+```toml
+[[sources]]
+type = "glob"
+pattern = "src/**/*Trigger.ts"    # 匹配所有 Trigger 文件
+output_path = "output/triggers.xml"
+module_name = "triggers"
+```
+
+### 7. Per-Source 配置
 每个 source 可独立配置：
 - `output_path`: 覆盖默认输出路径
 - `module_name`: 覆盖默认 module name（允许空字符串）

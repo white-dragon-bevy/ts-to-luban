@@ -1,5 +1,27 @@
-export interface EntityTrigger {
-    num:number
+/**
+ * 基础触发器接口（无 parent）
+ */
+export interface BaseTrigger {
+    /** 触发器ID */
+    id: number;
+}
+
+/**
+ * 实体触发器接口，继承 BaseTrigger（有 parent）
+ */
+export interface EntityTrigger extends BaseTrigger {
+    /** 实体数量 */
+    num: number;
+}
+
+/**
+ * 高级触发器接口，继承 EntityTrigger（有 parent）
+ */
+export interface AdvancedTrigger extends EntityTrigger {
+    /** 优先级 */
+    priority: number;
+    /** 是否启用 */
+    enabled: boolean;
 }
 
 /**
@@ -16,7 +38,11 @@ export class DamageTrigger {
  * @param healAmount - 治疗量
  * @param duration - 治疗持续时间
  */
-export class HealTrigger {
+export class HealTrigger implements AdvancedTrigger {
+    priority: number;
+    enabled: boolean;
+    num: number;
+    id: number;
     public healAmount: number;
     public duration: number;
 }

@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use glob::glob;
 use anyhow::Result;
 use crate::config::ScanOptions;
 
@@ -83,15 +84,25 @@ pub fn scan_directories(dirs: &[PathBuf]) -> Result<Vec<PathBuf>> {
     Ok(all_files)
 }
 
-pub fn scan_directories_with_options(dirs: &[(PathBuf, ScanConfig)]) -> Result<Vec<PathBuf>> {
-    let mut all_files = Vec::new();
+/// Expand a glob pattern and return matching files
+/// Only returns files (not directories) that match the pattern
+pub fn expand_glob(pattern: &str) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
 
-    for (dir, config) in dirs {
-        let files = scan_directory_with_options(dir, config)?;
-        all_files.extend(files);
+    for entry in glob(pattern).map_err(|e| anyhow::anyhow!("Invalid glob pattern: {}", e))? {
+        match entry {
+            Ok(path) => {
+                if path.is_file() {
+                    files.push(path);
+                }
+            }
+            Err(e) => {
+                eprintln!("  Warning: Glob error for {:?}: {}", pattern, e);
+            }
+        }
     }
 
-    Ok(all_files)
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -146,5 +157,42 @@ mod tests {
 
         let files = scan_directory(dir.path()).unwrap();
         assert_eq!(files.len(), 1);
+    }
+
+    #[test]
+    fn test_expand_glob_pattern() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("src");
+        fs::create_dir(&sub).unwrap();
+
+        fs::write(sub.join("DamageTrigger.ts"), "export class DamageTrigger {}").unwrap();
+        fs::write(sub.join("HealTrigger.ts"), "export class HealTrigger {}").unwrap();
+        fs::write(sub.join("Component.ts"), "export class Component {}").unwrap();
+
+        // Pattern matching *Trigger.ts
+        let pattern = format!("{}/*Trigger.ts", sub.display());
+        let files = expand_glob(&pattern).unwrap();
+        assert_eq!(files.len(), 2);
+
+        // All files should end with Trigger.ts
+        for file in &files {
+            assert!(file.file_name().unwrap().to_str().unwrap().ends_with("Trigger.ts"));
+        }
+    }
+
+    #[test]
+    fn test_expand_glob_recursive() {
+        let dir = TempDir::new().unwrap();
+        let src = dir.path().join("src");
+        let nested = src.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+
+        fs::write(src.join("a.ts"), "export class A {}").unwrap();
+        fs::write(nested.join("b.ts"), "export class B {}").unwrap();
+
+        // Recursive pattern **/*.ts
+        let pattern = format!("{}/**/*.ts", src.display());
+        let files = expand_glob(&pattern).unwrap();
+        assert_eq!(files.len(), 2);
     }
 }

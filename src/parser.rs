@@ -195,6 +195,15 @@ impl TsParser {
             .or_else(|| self.get_leading_comment(iface_decl.span.lo, comments));
         let param_comments = self.get_param_comments(export_pos, comments);
 
+        // Extract extends (first parent interface only)
+        let extends = iface_decl.extends.first().and_then(|ext| {
+            if let Expr::Ident(ident) = &*ext.expr {
+                Some(ident.sym.to_string())
+            } else {
+                None
+            }
+        });
+
         for member in &iface_decl.body.body {
             if let TsTypeElement::TsPropertySignature(prop) = member {
                 if let Some(mut field) = self.extract_interface_prop(prop, comments) {
@@ -214,7 +223,7 @@ impl TsParser {
             comment: iface_comment,
             fields,
             implements: vec![],
-            extends: None,
+            extends,
             source_file: path.to_string_lossy().to_string(),
             file_hash: file_hash.to_string(),
             is_interface: true,
@@ -511,5 +520,35 @@ export class MyClass {
 
         assert_eq!(classes[0].fields[0].field_type, "map,string,number");
         assert_eq!(classes[0].fields[1].field_type, "map,string,bool");
+    }
+
+    #[test]
+    fn test_parse_interface_extends() {
+        let ts_code = r#"
+export interface BaseTrigger {
+    id: number;
+}
+
+export interface EntityTrigger extends BaseTrigger {
+    num: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 2);
+
+        // BaseTrigger has no extends
+        assert_eq!(classes[0].name, "BaseTrigger");
+        assert_eq!(classes[0].extends, None);
+        assert!(classes[0].is_interface);
+
+        // EntityTrigger extends BaseTrigger
+        assert_eq!(classes[1].name, "EntityTrigger");
+        assert_eq!(classes[1].extends, Some("BaseTrigger".to_string()));
+        assert!(classes[1].is_interface);
     }
 }

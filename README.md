@@ -129,10 +129,34 @@ CustomType = "string"
 | `directory` | `path` | 扫描目录下所有 .ts 文件 |
 | `file` | `path` | 单个 .ts 文件 |
 | `files` | `paths` | 多个 .ts 文件（数组） |
+| `glob` | `pattern` | Glob 模式匹配文件 |
 
 **通用可选字段**：
 - `output_path`: 覆盖默认输出路径
 - `module_name`: 覆盖默认 module name（允许空字符串）
+
+### Glob 模式
+
+使用 `glob` 类型可以通过通配符匹配文件：
+
+```toml
+[[sources]]
+type = "glob"
+pattern = "src/**/*Trigger.ts"    # 匹配所有 Trigger 文件
+output_path = "output/triggers.xml"
+module_name = "triggers"
+```
+
+**支持的通配符**：
+- `*` - 匹配任意字符（不含路径分隔符）
+- `**` - 匹配任意层级目录
+- `?` - 匹配单个字符
+- `[abc]` - 匹配括号内的任意字符
+
+**示例**：
+- `src/**/*.ts` - src 目录下所有 .ts 文件
+- `src/**/events/*.ts` - src 下任意层级的 events 目录中的 .ts 文件
+- `src/triggers/*Trigger.ts` - triggers 目录下以 Trigger.ts 结尾的文件
 
 ## 父类解析
 
