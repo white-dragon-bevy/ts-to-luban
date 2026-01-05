@@ -18,7 +18,7 @@ use tsconfig::TsConfig;
 use parser::TsParser;
 use type_mapper::TypeMapper;
 use base_class::BaseClassResolver;
-use generator::XmlGenerator;
+use generator::{XmlGenerator, generate_enum_xml, generate_bean_names_xml};
 use cache::Cache;
 
 #[derive(Parser)]
@@ -144,30 +144,46 @@ fn main() -> Result<()> {
     // Parse files in parallel, setting output_path and module_name for each class
     println!("\n[2/4] Parsing TypeScript files...");
 
-    let all_classes: Vec<_> = ts_files
+    let parse_results: Vec<_> = ts_files
         .par_iter()
         .filter_map(|(path, output_path, module_name)| {
             // Create parser per-thread since SourceMap isn't Sync
             let ts_parser = TsParser::new();
-            match ts_parser.parse_file(path) {
+            let classes = match ts_parser.parse_file(path) {
                 Ok(mut classes) => {
                     // Set output_path and module_name for all classes from this file
                     for class in &mut classes {
                         class.output_path = output_path.clone();
                         class.module_name = module_name.clone();
                     }
-                    Some(classes)
+                    classes
                 }
                 Err(e) => {
-                    eprintln!("  Warning: Failed to parse {:?}: {}", path, e);
-                    None
+                    eprintln!("  Warning: Failed to parse classes from {:?}: {}", path, e);
+                    vec![]
                 }
-            }
+            };
+            let enums = match ts_parser.parse_enums(path) {
+                Ok(mut enums) => {
+                    for e in &mut enums {
+                        e.output_path = output_path.clone();
+                        e.module_name = module_name.clone();
+                    }
+                    enums
+                }
+                Err(e) => {
+                    eprintln!("  Warning: Failed to parse enums from {:?}: {}", path, e);
+                    vec![]
+                }
+            };
+            Some((classes, enums))
         })
-        .flatten()
         .collect();
 
-    println!("  Extracted {} classes/interfaces", all_classes.len());
+    let all_classes: Vec<_> = parse_results.iter().flat_map(|(c, _)| c.clone()).collect();
+    let all_enums: Vec<_> = parse_results.iter().flat_map(|(_, e)| e.clone()).collect();
+
+    println!("  Extracted {} classes/interfaces, {} enums", all_classes.len(), all_enums.len());
 
     // Filter by cache
     println!("\n[3/4] Checking cache...");
@@ -188,6 +204,25 @@ fn main() -> Result<()> {
                     println!("  [update] {}", class.name);
                 }
                 cache.set_entry(&class.name, &class.source_file, &class.file_hash);
+            }
+        })
+        .collect();
+
+    // Filter enums by cache
+    let final_enums: Vec<_> = all_enums
+        .into_iter()
+        .inspect(|enum_info| {
+            if cache.is_valid(&enum_info.name, &enum_info.file_hash) {
+                unchanged += 1;
+                if cli.verbose {
+                    println!("  [cached enum] {}", enum_info.name);
+                }
+            } else {
+                updated += 1;
+                if cli.verbose {
+                    println!("  [update enum] {}", enum_info.name);
+                }
+                cache.set_entry(&enum_info.name, &enum_info.source_file, &enum_info.file_hash);
             }
         })
         .collect();
@@ -238,12 +273,83 @@ fn main() -> Result<()> {
         println!("  No changes, skipping all writes");
     }
 
+    // Generate enum XML if there are enums
+    if !final_enums.is_empty() {
+        // Group enums by (output_path, module_name)
+        let mut enum_grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> = std::collections::HashMap::new();
+
+        // Default enum output path: use config.output.enum_path or derive from default_output
+        let default_enum_output = config.output.enum_path.clone().unwrap_or_else(|| {
+            default_output.with_file_name(
+                format!("{}_enums.xml",
+                    default_output.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default())
+            )
+        });
+
+        for enum_info in final_enums.iter() {
+            let out_path = enum_info.output_path.clone().map(|p| {
+                // For per-source output_path, add _enums suffix
+                p.with_file_name(
+                    format!("{}_enums.xml",
+                        p.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default())
+                )
+            }).unwrap_or_else(|| default_enum_output.clone());
+            let module = enum_info.module_name.clone().unwrap_or_else(|| default_module.clone());
+            enum_grouped.entry((out_path, module)).or_default().push(enum_info);
+        }
+
+        for ((out_path, module_name), enums) in &enum_grouped {
+            let enums_owned: Vec<_> = enums.iter().map(|e| (*e).clone()).collect();
+            let xml_output = generate_enum_xml(&enums_owned, module_name);
+
+            let resolved_path = project_root.join(out_path);
+            let should_write = if resolved_path.exists() {
+                let existing = std::fs::read_to_string(&resolved_path)?;
+                existing != xml_output
+            } else {
+                true
+            };
+
+            if should_write {
+                if let Some(parent) = resolved_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&resolved_path, &xml_output)?;
+                println!("  Written {} enums to {:?}", enums.len(), resolved_path);
+            }
+        }
+    }
+
+    // Generate bean names XML if configured
+    if let Some(bean_names_path) = &config.output.bean_names_path {
+        let bean_names: Vec<&str> = final_classes.iter().map(|c| c.name.as_str()).collect();
+        let module_name = config.output.bean_names_module.as_deref().unwrap_or("meta");
+        let xml_output = generate_bean_names_xml(&bean_names, module_name);
+
+        let resolved_path = project_root.join(bean_names_path);
+        let should_write = if resolved_path.exists() {
+            let existing = std::fs::read_to_string(&resolved_path)?;
+            existing != xml_output
+        } else {
+            true
+        };
+
+        if should_write {
+            if let Some(parent) = resolved_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&resolved_path, &xml_output)?;
+            println!("  Written bean names to {:?}", resolved_path);
+        }
+    }
+
     // Save cache
     cache.save(&cache_path)?;
 
     let elapsed = start.elapsed();
     println!("\n{}", "=".repeat(50));
-    println!("Done! Generated {} beans to {} file(s) in {:?}", final_classes.len(), grouped.len(), elapsed);
+    println!("Done! Generated {} beans, {} enums to {} file(s) in {:?}",
+        final_classes.len(), final_enums.len(), grouped.len(), elapsed);
 
     Ok(())
 }

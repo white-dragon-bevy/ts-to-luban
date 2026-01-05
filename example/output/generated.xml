@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="triggers" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="BaseTrigger" comment="基础触发器接口（无 parent）">
+        <var name="id" type="double" comment="触发器ID"/>
+    </bean>
+
+    <bean name="EntityTrigger" parent="BaseTrigger" comment="实体触发器接口，继承 BaseTrigger（有 parent）">
+        <var name="num" type="double" comment="实体数量"/>
+    </bean>
+
+    <bean name="AdvancedTrigger" parent="EntityTrigger" comment="高级触发器接口，继承 EntityTrigger（有 parent）">
+        <var name="priority" type="double" comment="优先级"/>
+        <var name="enabled" type="bool" comment="是否启用"/>
+    </bean>
+
+    <bean name="DamageTrigger" parent="TriggerBase" comment="伤害触发器">
+        <var name="damage" type="double"/>
+        <var name="radius" type="double"/>
+        <var name="targetTags" type="list,string"/>
+    </bean>
+
+    <bean name="HealTrigger" parent="TriggerBase" comment="治疗触发器">
+        <var name="priority" type="double"/>
+        <var name="enabled" type="bool"/>
+        <var name="num" type="double"/>
+        <var name="id" type="double"/>
+        <var name="healAmount" type="double" comment="治疗量"/>
+        <var name="duration" type="double" comment="治疗持续时间"/>
+    </bean>
+
+    <bean name="HealTrigger2" parent="TsClass" comment="继承">
+        <var name="healAmount2" type="double"/>
+        <var name="ref" type="HealTrigger"/>
+    </bean>
+
+    <bean name="UnitFlagsModifier" comment="权限修改组件">
+        <var name="grant" type="UnitFlag?" comment="授予的权限位"/>
+        <var name="revoke" type="UnitFlag?" comment="剥夺的权限位"/>
+    </bean>
+
+    <bean name="UnitFlagsPreset" comment="单位权限预设">
+        <var name="id" type="string" comment="组合唯一标识（中文名称）"/>
+        <var name="baseFlags" type="UnitFlag" comment="单位基础权限"/>
+        <var name="immunityMask" type="UnitFlag" comment="单位免疫权限,该掩码不会被其他掩码覆盖"/>
+    </bean>
+
+    <bean name="IAmSkillStateMachine" comment="技能状态机接口 定义技能状态机的行为规范">
+        <var name="id" type="string?" comment="状态机标识"/>
+    </bean>
+
+    <bean name="SkillStateMachine" parent="TsClass" comment="技能状态机类 实现技能状态机的具体类">
+        <var name="id" type="string?"/>
+    </bean>
+
+    <bean name="TriggerableComponentFactoryDefine" comment="可触发的组件工厂定义 定义可以在特定时机触发的组件工厂">
+        <var name="factory" type="ComponentFactory" comment="组件工厂"/>
+        <var name="condition" type="string?" comment="触发条件"/>
+        <var name="priority" type="double?" comment="优先级"/>
+    </bean>
+
+    <bean name="SkillMetadata">
+    </bean>
+
+    <bean name="SkillDataConfig" comment="技能数据配置接口 定义技能的静态配置数据，创建时确定且运行时不变。">
+        <var name="activeDuration" type="double?" comment="激活持续时间（单位：秒）"/>
+        <var name="castDuration" type="double" comment="施法持续时间（单位：秒）"/>
+        <var name="cooldownDuration" type="double" comment="冷却持续时间（单位：秒）"/>
+        <var name="data" type="SkillMetadata"/>
+        <var name="id" type="string" comment="技能唯一标识符"/>
+        <var name="stateMachine" type="string?" comment="状态机类型（构造函数） 必须是实现 IAmSkillStateMachine 接口的组件类 构造函数接收 skillDataProvider（自定义数据或数据提供者函数）"/>
+        <var name="tags" type="list,ComponentFactory" comment="附加的标签组件列表"/>
+        <var name="triggerOnActive" type="list,TriggerableComponentFactoryDefine" comment="激活钩子 - 技能激活时触发"/>
+        <var name="triggerOnCast" type="list,TriggerableComponentFactoryDefine" comment="施法钩子 - 开始施法时触发"/>
+        <var name="triggerOnEnd" type="list,TriggerableComponentFactoryDefine" comment="结束钩子 - 技能结束时触发"/>
+        <var name="triggerOnInterrupt" type="list,TriggerableComponentFactoryDefine" comment="中断钩子 - 技能被中断时触发"/>
+    </bean>
+
+    <bean name="DConfig" comment="最底层接口">
+        <var name="id" type="double" comment="配置ID"/>
+        <var name="name" type="string" comment="配置名称"/>
+        <var name="enabled" type="bool" comment="是否启用"/>
+    </bean>
+
+    <bean name="CComponent" parent="TsClass" comment="C 类型，持有 D 接口">
+        <var name="config" type="DConfig" comment="D 配置"/>
+        <var name="weight" type="double" comment="权重"/>
+        <var name="tags" type="list,string" comment="标签列表"/>
+    </bean>
+
+    <bean name="BModule" parent="TsClass" comment="B 类型，持有 C 组件">
+        <var name="mainComponent" type="CComponent" comment="主组件"/>
+        <var name="backupComponent" type="CComponent?" comment="备用组件（可选）"/>
+        <var name="priority" type="double" comment="模块优先级"/>
+    </bean>
+
+    <bean name="ASystem" parent="TsClass" comment="A 类型，持有 B 模块">
+        <var name="module" type="BModule" comment="主模块"/>
+        <var name="modules" type="list,BModule" comment="所有模块"/>
+        <var name="systemName" type="string" comment="系统名称"/>
+        <var name="moduleMap" type="map,string,BModule" comment="模块映射"/>
+    </bean>
+
+    <bean name="SpawnTrigger" parent="SpawnBase" comment="生成触发器">
+        <var name="entityId" type="string"/>
+        <var name="position" type="Vector3"/>
+        <var name="count" type="double"/>
+        <var name="delay" type="double?"/>
+    </bean>
+
+</module>

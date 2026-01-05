@@ -59,6 +59,7 @@ mod tests {
             is_interface: false,
             output_path: None,
             module_name: None,
+            type_params: std::collections::HashMap::new(),
         }
     }
 

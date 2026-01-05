@@ -2,9 +2,8 @@
 /bin/luban-gen
 /bin/luban-gen.exe
 .luban-cache.json
-*.xml
 !tests/fixtures/*.xml
-output/
+
 
 # IDE
 .idea/

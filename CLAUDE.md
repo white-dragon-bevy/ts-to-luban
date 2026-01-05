@@ -37,10 +37,11 @@ src/
 ├── parser.rs        # TypeScript AST 解析 (SWC)
 ├── parser/
 │   ├── class_info.rs   # ClassInfo 结构
+│   ├── enum_info.rs    # EnumInfo 结构
 │   └── field_info.rs   # FieldInfo 结构
 ├── type_mapper.rs   # TS → Luban 类型映射
 ├── base_class.rs    # 父类解析 (仅配置决定，忽略 extends)
-├── generator.rs     # XML 生成
+├── generator.rs     # XML 生成 (bean, enum, bean names)
 ├── cache.rs         # 增量缓存系统
 ├── scanner.rs       # 文件扫描
 └── tsconfig.rs      # tsconfig.json 路径解析
@@ -113,6 +114,103 @@ module_name = "triggers"
 每个 source 可独立配置：
 - `output_path`: 覆盖默认输出路径
 - `module_name`: 覆盖默认 module name（允许空字符串）
+
+### 8. Enum 导出
+TypeScript 枚举会被转换为 Luban XML `<enum>` 元素：
+
+**字符串枚举**（使用 `tags="string"`）：
+```typescript
+export enum ItemType {
+    Role = "role",        // → value="1"
+    Consumable = "consumable"  // → value="2"
+}
+```
+生成：
+```xml
+<enum name="ItemType" tags="string">
+    <var name="Role" alias="role" value="1"/>
+    <var name="Consumable" alias="consumable" value="2"/>
+</enum>
+```
+
+**数值枚举**（无 tags 属性）：
+```typescript
+export enum SkillStyle {
+    Attack = 1,   // → value="1"
+    Defense = 2   // → value="2"
+}
+```
+生成：
+```xml
+<enum name="SkillStyle">
+    <var name="Attack" alias="attack" value="1"/>
+    <var name="Defense" alias="defense" value="2"/>
+</enum>
+```
+
+**位标志枚举**（使用 `@flags="true"` 和 `@alias="xxx"`）：
+```typescript
+/**
+ * 单位权限标志
+ * @flags="true"
+ */
+export enum UnitFlag {
+    /**
+     * 可以移动
+     * @alias="移动"
+     */
+    CAN_MOVE = 1 << 0,
+    /**
+     * 可以攻击
+     * @alias="攻击"
+     */
+    CAN_ATTACK = 1 << 1,
+    /** 组合标志 */
+    BASICS = CAN_MOVE | CAN_ATTACK,
+}
+```
+生成：
+```xml
+<enum name="UnitFlag" flags="true" comment="单位权限标志">
+    <var name="CAN_MOVE" alias="移动" value="1" comment="可以移动"/>
+    <var name="CAN_ATTACK" alias="攻击" value="2" comment="可以攻击"/>
+    <var name="BASICS" alias="basics" value="3" comment="组合标志"/>
+</enum>
+```
+
+**规则**：
+- `alias` = `@alias="xxx"` 标签值，或小写的 name
+- `@flags="true"` 标签 → 生成 `flags="true"` 属性
+- 支持位运算表达式：`1 << N`、`A | B`、`A & B` 等
+- 支持枚举成员引用：`BASICS = CAN_MOVE | CAN_ATTACK`
+- 字符串枚举的 value 从 1 自动递增（原始字符串值被忽略）
+- 数值枚举使用原始数值
+- 枚举输出到独立文件，默认为 `{output}_enums.xml`
+
+**配置**：
+```toml
+[output]
+path = "output/generated.xml"
+enum_path = "output/enums.xml"  # 可选：自定义枚举输出路径
+```
+
+### 9. Bean 名称集合导出
+可以导出所有 bean 名称到一个特殊的 XML 文件：
+
+```toml
+[output]
+bean_names_path = "output/bean_names.xml"
+bean_names_module = "meta"  # 可选，默认 "meta"
+```
+
+生成固定格式：
+```xml
+<module name="meta" comment="bean name set">
+    <bean name="TsClassName">
+        <var name="name" type="string#(set=Bean1,Bean2,Bean3)"/>
+    </bean>
+</module>
+```
 
 ## 开发注意事项
 

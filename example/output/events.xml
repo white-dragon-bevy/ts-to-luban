@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="triggers" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="PlayerDeathEvent" parent="EventBase" comment="玩家死亡事件">
+        <var name="playerId" type="double" comment="玩家ID"/>
+        <var name="killerId" type="double" comment="击杀者ID"/>
+    </bean>
+
+    <bean name="ItemPickupEvent" parent="EventBase" comment="物品拾取事件">
+        <var name="itemId" type="string" comment="物品ID"/>
+        <var name="count" type="double" comment="数量"/>
+    </bean>
+
+</module>

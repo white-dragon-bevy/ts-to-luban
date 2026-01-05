@@ -1,0 +1,37 @@
+use std::path::PathBuf;
+
+/// Represents an enum variant (member)
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    /// Variant name (e.g., "Role")
+    pub name: String,
+    /// Alias - from @alias tag or lowercase name (e.g., "role" or "移动")
+    pub alias: String,
+    /// Numeric value (auto-incremented for string enums)
+    pub value: i64,
+    /// Optional comment from JSDoc (excludes @alias line)
+    pub comment: Option<String>,
+}
+
+/// Represents a TypeScript enum
+#[derive(Debug, Clone)]
+pub struct EnumInfo {
+    /// Enum name
+    pub name: String,
+    /// Optional comment from JSDoc (excludes @flags line)
+    pub comment: Option<String>,
+    /// Whether this is a string enum (uses tags="string")
+    pub is_string_enum: bool,
+    /// Whether this is a flags enum (@flags="true")
+    pub is_flags: bool,
+    /// Enum variants
+    pub variants: Vec<EnumVariant>,
+    /// Source file path
+    pub source_file: String,
+    /// File hash for caching
+    pub file_hash: String,
+    /// Custom output path for this enum
+    pub output_path: Option<PathBuf>,
+    /// Custom module name for this enum
+    pub module_name: Option<String>,
+}

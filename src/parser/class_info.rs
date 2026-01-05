@@ -1,4 +1,5 @@
 use super::field_info::FieldInfo;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -16,4 +17,8 @@ pub struct ClassInfo {
     pub output_path: Option<PathBuf>,
     /// Custom module name for this class (overrides default module_name)
     pub module_name: Option<String>,
+    /// Generic type parameters mapping: T -> ConstraintType
+    /// e.g., {"T": "SkillMetadata", "K": "string"}
+    #[allow(dead_code)]
+    pub type_params: HashMap<String, String>,
 }

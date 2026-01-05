@@ -29,6 +29,15 @@ pub struct OutputConfig {
     pub cache_file: PathBuf,
     #[serde(default)]
     pub module_name: String,
+    /// Path to output enum XML file (optional, defaults to {path}_enums.xml)
+    #[serde(default)]
+    pub enum_path: Option<PathBuf>,
+    /// Path to output bean names collection XML file
+    #[serde(default)]
+    pub bean_names_path: Option<PathBuf>,
+    /// Module name for bean names collection (optional)
+    #[serde(default)]
+    pub bean_names_module: Option<String>,
 }
 
 fn default_cache_file() -> PathBuf {
@@ -511,5 +520,35 @@ module_name = "matched"
         } else {
             panic!("Expected Glob source");
         }
+    }
+
+    #[test]
+    fn test_parse_bean_names_config() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+bean_names_path = "output/bean_names.xml"
+bean_names_module = "meta"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.output.bean_names_path, Some(PathBuf::from("output/bean_names.xml")));
+        assert_eq!(config.output.bean_names_module, Some("meta".to_string()));
+    }
+
+    #[test]
+    fn test_bean_names_config_optional() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.output.bean_names_path, None);
+        assert_eq!(config.output.bean_names_module, None);
     }
 }

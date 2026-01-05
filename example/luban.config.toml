@@ -7,6 +7,9 @@ tsconfig = "tsconfig.json"
 path = "output/generated.xml"
 cache_file = ".luban-cache.json"
 module_name = "triggers"
+# Bean 名称集合输出配置
+bean_names_path = "output/bean_names.xml"
+bean_names_module = "meta"
 
 # 扫描目录
 [[sources]]
