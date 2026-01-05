@@ -51,6 +51,7 @@ mod tests {
         ClassInfo {
             name: name.to_string(),
             comment: None,
+            alias: None,
             fields: vec![],
             implements: vec![],
             extends: None,

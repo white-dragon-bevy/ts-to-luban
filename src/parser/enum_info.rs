@@ -18,7 +18,9 @@ pub struct EnumVariant {
 pub struct EnumInfo {
     /// Enum name
     pub name: String,
-    /// Optional comment from JSDoc (excludes @flags line)
+    /// Optional alias from @alias tag in JSDoc
+    pub alias: Option<String>,
+    /// Optional comment from JSDoc (excludes @flags and @alias lines)
     pub comment: Option<String>,
     /// Whether this is a string enum (uses tags="string")
     pub is_string_enum: bool,

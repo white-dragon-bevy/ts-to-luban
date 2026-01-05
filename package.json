@@ -1,6 +1,6 @@
 {
   "name": "@white-dragon-bevy/ts-to-luban",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "High-performance TypeScript to Luban XML Schema generator",
   "repository": {
     "type": "git",
@@ -18,7 +18,8 @@
   "files": [
     "bin",
     "scripts",
-    "index.d.ts"
+    "index.d.ts",
+    ".claude-plugin"
   ],
   "keywords": [
     "typescript",

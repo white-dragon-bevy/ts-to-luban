@@ -26,6 +26,7 @@ export interface AdvancedTrigger extends EntityTrigger {
 
 /**
  * 伤害触发器
+ * @alias:伤害
  */
 export class DamageTrigger {
     public damage: number;
@@ -53,4 +54,20 @@ export class HealTrigger implements AdvancedTrigger {
 export class HealTrigger2 extends  HealTrigger{
     public healAmount2: number;
     public ref:HealTrigger;
+}
+
+/**
+ * 内部使用的辅助类，不导出到 Luban
+ * @ignore
+ */
+export class InternalHelper {
+    public helperData: string;
+}
+
+/**
+ * 内部接口，不导出到 Luban
+ * @ignore
+ */
+export interface InternalInterface {
+    internalField: number;
 }

@@ -98,6 +98,10 @@ pub fn generate_enum_xml(enums: &[EnumInfo], module_name: &str) -> String {
 }
 
 fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
+    let alias_attr = enum_info.alias.as_ref()
+        .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
+        .unwrap_or_default();
+
     let flags_attr = if enum_info.is_flags {
         r#" flags="true""#.to_string()
     } else {
@@ -115,8 +119,8 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
     };
 
     lines.push(format!(
-        r#"    <enum name="{}"{}{}{}>"#,
-        enum_info.name, flags_attr, comment_attr, tags_attr
+        r#"    <enum name="{}"{}{}{}{}>"#,
+        enum_info.name, alias_attr, flags_attr, comment_attr, tags_attr
     ));
 
     for variant in &enum_info.variants {
@@ -161,18 +165,18 @@ pub fn generate_bean_names_xml(bean_names: &[&str], module_name: &str) -> String
 /// Generate XML for bean type enums grouped by parent
 /// Each parent becomes an enum with all beans that have that parent as variants
 /// Rules:
-/// - String enum with tags="string"
-/// - alias = name (same as variant name)
-/// - value auto-increments from 1
+/// - value = bean name (string)
+/// - alias only generated when @alias tag exists
 /// - Beans without parent are excluded
-pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str)], module_name: &str) -> String {
+/// Input: (bean_name, parent, alias)
+pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&str>)], module_name: &str) -> String {
     use std::collections::HashMap;
 
-    // Group beans by parent
-    let mut parent_to_beans: HashMap<&str, Vec<&str>> = HashMap::new();
-    for (bean_name, parent) in beans_with_parents {
+    // Group beans by parent: parent -> [(bean_name, alias)]
+    let mut parent_to_beans: HashMap<&str, Vec<(&str, Option<&str>)>> = HashMap::new();
+    for (bean_name, parent, alias) in beans_with_parents {
         if !parent.is_empty() {
-            parent_to_beans.entry(parent).or_default().push(bean_name);
+            parent_to_beans.entry(parent).or_default().push((bean_name, *alias));
         }
     }
 
@@ -191,14 +195,20 @@ pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str)], module_
 
         // Generate enum for this parent
         lines.push(format!(
-            r#"    <enum name="{}" comment="{} 的子类型" tags="string">"#,
+            r#"    <enum name="{}" comment="{} 的子类型">"#,
             parent, parent
         ));
 
-        for (i, bean_name) in beans.iter().enumerate() {
+        for (bean_name, alias) in beans.iter() {
+            // Only include alias attribute if @alias tag exists
+            let alias_attr = alias
+                .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
+                .unwrap_or_default();
             lines.push(format!(
-                r#"        <var name="{}" alias="{}" value="{}"/>"#,
-                bean_name, bean_name, i + 1
+                r#"        <var name="{}"{}value="{}"/>"#,
+                bean_name,
+                if alias_attr.is_empty() { " ".to_string() } else { format!("{} ", alias_attr) },
+                bean_name
             ));
         }
 
@@ -236,6 +246,7 @@ mod tests {
         let class = ClassInfo {
             name: "MyClass".to_string(),
             comment: Some("Test class".to_string()),
+            alias: None,
             fields: vec![
                 FieldInfo {
                     name: "name".to_string(),
@@ -264,6 +275,7 @@ mod tests {
         let class = ClassInfo {
             name: "MyClass".to_string(),
             comment: None,
+            alias: None,
             fields: vec![make_field("value", "string", true)],
             implements: vec![],
             extends: None,
@@ -284,6 +296,7 @@ mod tests {
         let class = ClassInfo {
             name: "MyClass".to_string(),
             comment: None,
+            alias: None,
             fields: vec![make_field("items", "list,string", true)],
             implements: vec![],
             extends: None,
@@ -306,6 +319,7 @@ mod tests {
         let class = ClassInfo {
             name: "MyInterface".to_string(),
             comment: None,
+            alias: None,
             fields: vec![make_field("value", "int", false)],
             implements: vec![],
             extends: None,
@@ -327,6 +341,7 @@ mod tests {
         let class = ClassInfo {
             name: "ChildInterface".to_string(),
             comment: None,
+            alias: None,
             fields: vec![make_field("value", "int", false)],
             implements: vec![],
             extends: Some("ParentInterface".to_string()),
@@ -354,6 +369,7 @@ mod tests {
 
         let enum_info = EnumInfo {
             name: "ItemType".to_string(),
+            alias: None,
             comment: Some("物品类型".to_string()),
             is_string_enum: true,
             is_flags: false,
@@ -389,6 +405,7 @@ mod tests {
 
         let enum_info = EnumInfo {
             name: "SkillStyle".to_string(),
+            alias: None,
             comment: Some("技能类型".to_string()),
             is_string_enum: false,
             is_flags: false,
@@ -439,6 +456,7 @@ mod tests {
 
         let enum_info = EnumInfo {
             name: "UnitFlag".to_string(),
+            alias: None,
             comment: Some("权限控制".to_string()),
             is_string_enum: false,
             is_flags: true,

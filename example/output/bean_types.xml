@@ -1,34 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<module name="types" comment="自动生成的 bean 类型枚举">
+<module name="triggers" comment="自动生成的 bean 类型枚举">
 
-    <enum name="BaseTrigger" comment="BaseTrigger 的子类型" tags="string">
-        <var name="EntityTrigger" alias="EntityTrigger" value="1"/>
+    <enum name="BaseTriggerEnum" comment="BaseTrigger 的子类型">
+        <var name="EntityTrigger" value="EntityTrigger" comment="实体触发器接口，继承 BaseTrigger（有 parent）"/>
     </enum>
 
-    <enum name="EntityTrigger" comment="EntityTrigger 的子类型" tags="string">
-        <var name="AdvancedTrigger" alias="AdvancedTrigger" value="1"/>
+    <enum name="EntityTriggerEnum" comment="EntityTrigger 的子类型">
+        <var name="AdvancedTrigger" value="AdvancedTrigger" comment="高级触发器接口，继承 EntityTrigger（有 parent）"/>
     </enum>
 
-    <enum name="EventBase" comment="EventBase 的子类型" tags="string">
-        <var name="PlayerDeathEvent" alias="PlayerDeathEvent" value="1"/>
-        <var name="ItemPickupEvent" alias="ItemPickupEvent" value="2"/>
+    <enum name="EventBaseEnum" comment="EventBase 的子类型">
+        <var name="PlayerDeathEvent" value="PlayerDeathEvent" comment="玩家死亡事件"/>
+        <var name="ItemPickupEvent" value="ItemPickupEvent" comment="物品拾取事件"/>
     </enum>
 
-    <enum name="SpawnBase" comment="SpawnBase 的子类型" tags="string">
-        <var name="SpawnTrigger" alias="SpawnTrigger" value="1"/>
+    <enum name="SpawnBaseEnum" comment="SpawnBase 的子类型">
+        <var name="SpawnTrigger" value="SpawnTrigger" comment="生成触发器"/>
     </enum>
 
-    <enum name="TriggerBase" comment="TriggerBase 的子类型" tags="string">
-        <var name="DamageTrigger" alias="DamageTrigger" value="1"/>
-        <var name="HealTrigger" alias="HealTrigger" value="2"/>
+    <enum name="TriggerBaseEnum" comment="TriggerBase 的子类型">
+        <var name="DamageTrigger" alias="伤害" value="DamageTrigger" comment="伤害触发器"/>
+        <var name="HealTrigger" value="HealTrigger" comment="治疗触发器"/>
     </enum>
 
-    <enum name="TsClass" comment="TsClass 的子类型" tags="string">
-        <var name="HealTrigger2" alias="HealTrigger2" value="1"/>
-        <var name="SkillStateMachine" alias="SkillStateMachine" value="2"/>
-        <var name="CComponent" alias="CComponent" value="3"/>
-        <var name="BModule" alias="BModule" value="4"/>
-        <var name="ASystem" alias="ASystem" value="5"/>
+    <enum name="TsClassEnum" comment="TsClass 的子类型">
+        <var name="HealTrigger2" value="HealTrigger2" comment="继承"/>
+        <var name="SkillStateMachine" value="SkillStateMachine" comment="技能状态机类 实现技能状态机的具体类"/>
+        <var name="CComponent" value="CComponent" comment="C 类型，持有 D 接口"/>
+        <var name="BModule" value="BModule" comment="B 类型，持有 C 组件"/>
+        <var name="ASystem" value="ASystem" comment="A 类型，持有 B 模块"/>
     </enum>
 
 </module>

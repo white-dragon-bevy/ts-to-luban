@@ -124,14 +124,25 @@ impl TsParser {
         let raw_enum_comment = self.get_raw_jsdoc_comment(export_pos, comments)
             .or_else(|| self.get_raw_jsdoc_comment(enum_decl.span.lo, comments));
 
+        // Check for @ignore tag - if present, skip this enum
+        if let Some(ref comment) = raw_enum_comment {
+            if has_jsdoc_ignore_tag(comment) {
+                return None;
+            }
+        }
+
         // Parse @flags tag from enum comment
         let is_flags = raw_enum_comment.as_ref()
             .map(|c| parse_jsdoc_tag(c, "flags").is_some())
             .unwrap_or(false);
 
-        // Get cleaned comment (without @flags line)
+        // Parse @alias tag from enum comment
+        let enum_alias = raw_enum_comment.as_ref()
+            .and_then(|c| parse_jsdoc_tag(c, "alias"));
+
+        // Get cleaned comment (without @flags and @alias lines)
         let enum_comment = raw_enum_comment.as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["flags"]));
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["flags", "alias"]));
 
         let mut variants = Vec::new();
         let mut is_string_enum = false;
@@ -147,54 +158,56 @@ impl TsParser {
             // Get raw member comment
             let raw_member_comment = self.get_raw_jsdoc_comment(member.span.lo, comments);
 
-            // Parse @alias tag from member comment
+            // Parse @alias tag from member comment (None if not specified)
             let alias = raw_member_comment.as_ref()
-                .and_then(|c| parse_jsdoc_tag(c, "alias"))
-                .unwrap_or_else(|| member_name.to_lowercase());
+                .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
             // Get cleaned comment (without @alias line)
             let member_comment = raw_member_comment.as_ref()
                 .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]));
 
             // Determine value and whether it's a string enum
-            let (value, member_is_string) = if let Some(init) = &member.init {
+            // numeric_value is used for member_values tracking (for bit operations reference)
+            let (value, member_is_string, numeric_value) = if let Some(init) = &member.init {
                 match &**init {
-                    Expr::Lit(Lit::Str(_)) => {
-                        // String enum - use auto-incremented value
-                        let v = auto_value;
-                        auto_value += 1;
-                        (v, true)
+                    Expr::Lit(Lit::Str(s)) => {
+                        // String enum - use original string value
+                        // s.value is Atom type, use format! to convert
+                        let str_val = format!("{:?}", s.value).trim_matches('"').to_string();
+                        (str_val, true, None)
                     }
                     Expr::Lit(Lit::Num(n)) => {
                         // Number enum - use actual value
                         let v = n.value as i64;
                         auto_value = v + 1;
-                        (v, false)
+                        (v.to_string(), false, Some(v))
                     }
                     _ => {
                         // Binary expression or identifier reference (e.g., 1 << 0 or CAN_MOVE | CAN_ATTACK)
                         if let Some(v) = Self::eval_const_expr(init, &member_values) {
                             auto_value = v + 1;
-                            (v, false)
+                            (v.to_string(), false, Some(v))
                         } else {
                             let v = auto_value;
                             auto_value += 1;
-                            (v, false)
+                            (v.to_string(), false, Some(v))
                         }
                     }
                 }
             } else {
                 let v = auto_value;
                 auto_value += 1;
-                (v, false)
+                (v.to_string(), false, Some(v))
             };
 
             if member_is_string {
                 is_string_enum = true;
             }
 
-            // Track this member's value for later references
-            member_values.insert(member_name.clone(), value);
+            // Track this member's numeric value for later references (only for numeric enums)
+            if let Some(nv) = numeric_value {
+                member_values.insert(member_name.clone(), nv);
+            }
 
             variants.push(EnumVariant {
                 name: member_name.clone(),
@@ -206,6 +219,7 @@ impl TsParser {
 
         Some(EnumInfo {
             name,
+            alias: enum_alias,
             comment: enum_comment,
             is_string_enum,
             is_flags,
@@ -326,11 +340,28 @@ impl TsParser {
         // Get first decorator position if any (comment may be attached there)
         let first_decorator_pos = class_decl.class.decorators.first().map(|d| d.span.lo);
 
-        // Extract class comment (try multiple positions)
-        let class_comment = self.get_leading_comment(export_pos, comments)
-            .or_else(|| first_decorator_pos.and_then(|pos| self.get_leading_comment(pos, comments)))
-            .or_else(|| self.get_leading_comment(class_decl.ident.span.lo, comments))
-            .or_else(|| self.get_leading_comment(class_decl.class.span.lo, comments));
+        // Get raw JSDoc comment to extract @alias tag
+        let raw_class_comment = self.get_raw_jsdoc_comment(export_pos, comments)
+            .or_else(|| first_decorator_pos.and_then(|pos| self.get_raw_jsdoc_comment(pos, comments)))
+            .or_else(|| self.get_raw_jsdoc_comment(class_decl.ident.span.lo, comments))
+            .or_else(|| self.get_raw_jsdoc_comment(class_decl.class.span.lo, comments));
+
+        // Check for @ignore tag - if present, skip this class
+        if let Some(ref comment) = raw_class_comment {
+            if has_jsdoc_ignore_tag(comment) {
+                return None;
+            }
+        }
+
+        // Parse @alias tag from raw comment
+        let class_alias = raw_class_comment.as_ref()
+            .and_then(|c| parse_jsdoc_tag(c, "alias"));
+
+        // Extract class comment (excluding @alias line)
+        let class_comment = raw_class_comment.as_ref()
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .filter(|s| !s.is_empty())
+            .or_else(|| self.get_leading_comment(export_pos, comments));
         let mut param_comments = self.get_param_comments(export_pos, comments);
         if let Some(pos) = first_decorator_pos {
             param_comments.extend(self.get_param_comments(pos, comments));
@@ -389,6 +420,7 @@ impl TsParser {
         Some(ClassInfo {
             name,
             comment: class_comment,
+            alias: class_alias,
             fields,
             implements,
             extends,
@@ -408,9 +440,26 @@ impl TsParser {
         // Extract type parameters
         let type_params = self.extract_type_params(iface_decl.type_params.as_ref(), &name);
 
-        // Extract interface comment (try export position first)
-        let iface_comment = self.get_leading_comment(export_pos, comments)
-            .or_else(|| self.get_leading_comment(iface_decl.span.lo, comments));
+        // Get raw JSDoc comment to extract @alias tag
+        let raw_iface_comment = self.get_raw_jsdoc_comment(export_pos, comments)
+            .or_else(|| self.get_raw_jsdoc_comment(iface_decl.span.lo, comments));
+
+        // Check for @ignore tag - if present, skip this interface
+        if let Some(ref comment) = raw_iface_comment {
+            if has_jsdoc_ignore_tag(comment) {
+                return None;
+            }
+        }
+
+        // Parse @alias tag from raw comment
+        let iface_alias = raw_iface_comment.as_ref()
+            .and_then(|c| parse_jsdoc_tag(c, "alias"));
+
+        // Extract interface comment (excluding @alias line)
+        let iface_comment = raw_iface_comment.as_ref()
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .filter(|s| !s.is_empty())
+            .or_else(|| self.get_leading_comment(export_pos, comments));
         let param_comments = self.get_param_comments(export_pos, comments);
 
         // Extract extends (first parent interface only)
@@ -439,6 +488,7 @@ impl TsParser {
         Some(ClassInfo {
             name,
             comment: iface_comment,
+            alias: iface_alias,
             fields,
             implements: vec![],
             extends,
@@ -681,19 +731,41 @@ fn parse_jsdoc_params(text: &str, params: &mut HashMap<String, String>) {
     }
 }
 
-/// Parse a JSDoc tag value like @flags="true" or @alias="移动"
-/// Returns the value inside quotes, or None if tag not found
-fn parse_jsdoc_tag(text: &str, tag_name: &str) -> Option<String> {
-    let tag_prefix = format!("@{}=", tag_name);
+/// Check if a JSDoc comment contains @ignore tag (standalone, no value needed)
+fn has_jsdoc_ignore_tag(text: &str) -> bool {
     for line in text.lines() {
         let line = line.trim().trim_start_matches('*').trim();
-        if let Some(rest) = line.strip_prefix(&tag_prefix) {
-            // Extract value inside quotes
+        if line == "@ignore" || line.starts_with("@ignore ") || line.starts_with("@ignore\t") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Parse a JSDoc tag value like @flags="true", @alias="移动", or @alias:Foo
+/// Supports two formats:
+/// - @tag="value" - returns the value inside quotes
+/// - @tag:value - returns the value after colon (trimmed)
+/// Returns None if tag not found
+fn parse_jsdoc_tag(text: &str, tag_name: &str) -> Option<String> {
+    let tag_prefix_eq = format!("@{}=", tag_name);
+    let tag_prefix_colon = format!("@{}:", tag_name);
+    for line in text.lines() {
+        let line = line.trim().trim_start_matches('*').trim();
+        // Try @tag="value" format
+        if let Some(rest) = line.strip_prefix(&tag_prefix_eq) {
             let rest = rest.trim();
             if rest.starts_with('"') {
                 if let Some(end) = rest[1..].find('"') {
                     return Some(rest[1..end+1].to_string());
                 }
+            }
+        }
+        // Try @tag:value format
+        if let Some(rest) = line.strip_prefix(&tag_prefix_colon) {
+            let value = rest.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
             }
         }
     }
@@ -702,14 +774,16 @@ fn parse_jsdoc_tag(text: &str, tag_name: &str) -> Option<String> {
 
 /// Parse JSDoc description excluding specific tags
 /// Returns description text without lines containing the specified tags
+/// Handles both @tag="value" and @tag:value formats
 fn parse_jsdoc_description_excluding_tags(text: &str, exclude_tags: &[&str]) -> String {
     let mut description = String::new();
     for line in text.lines() {
         let line = line.trim().trim_start_matches('*').trim();
-        // Skip lines with excluded tags
+        // Skip lines with excluded tags (both @tag= and @tag: formats)
         let is_excluded = exclude_tags.iter().any(|tag| {
-            let tag_prefix = format!("@{}=", tag);
-            line.starts_with(&tag_prefix)
+            let tag_prefix_eq = format!("@{}=", tag);
+            let tag_prefix_colon = format!("@{}:", tag);
+            line.starts_with(&tag_prefix_eq) || line.starts_with(&tag_prefix_colon)
         });
         if is_excluded {
             continue;
@@ -872,17 +946,17 @@ export enum ItemType {
 
         assert_eq!(e.variants.len(), 3);
         assert_eq!(e.variants[0].name, "Role");
-        assert_eq!(e.variants[0].alias, "role");
-        assert_eq!(e.variants[0].value, 1);
+        assert_eq!(e.variants[0].alias, None);  // No @alias tag
+        assert_eq!(e.variants[0].value, "role");  // Original string value
         assert_eq!(e.variants[0].comment, Some("角色".to_string()));
 
         assert_eq!(e.variants[1].name, "Consumable");
-        assert_eq!(e.variants[1].alias, "consumable");
-        assert_eq!(e.variants[1].value, 2);
+        assert_eq!(e.variants[1].alias, None);
+        assert_eq!(e.variants[1].value, "consumable");
 
         assert_eq!(e.variants[2].name, "Currency");
-        assert_eq!(e.variants[2].alias, "currency");
-        assert_eq!(e.variants[2].value, 3);
+        assert_eq!(e.variants[2].alias, None);
+        assert_eq!(e.variants[2].value, "currency");
     }
 
     #[test]
@@ -914,15 +988,15 @@ export enum SkillStyle {
 
         assert_eq!(e.variants.len(), 3);
         assert_eq!(e.variants[0].name, "Attack");
-        assert_eq!(e.variants[0].alias, "attack");
-        assert_eq!(e.variants[0].value, 1);
+        assert_eq!(e.variants[0].alias, None);  // No @alias tag
+        assert_eq!(e.variants[0].value, "1");
         assert_eq!(e.variants[0].comment, Some("攻击技能".to_string()));
 
         assert_eq!(e.variants[1].name, "Defense");
-        assert_eq!(e.variants[1].value, 2);
+        assert_eq!(e.variants[1].value, "2");
 
         assert_eq!(e.variants[2].name, "Support");
-        assert_eq!(e.variants[2].value, 3);
+        assert_eq!(e.variants[2].value, "3");
     }
 
     #[test]
@@ -987,18 +1061,18 @@ export enum UnitFlag {
 
         // CAN_MOVE should use custom alias
         assert_eq!(e.variants[0].name, "CAN_MOVE");
-        assert_eq!(e.variants[0].alias, "移动");
+        assert_eq!(e.variants[0].alias, Some("移动".to_string()));
         // Comment should exclude @alias line
         assert_eq!(e.variants[0].comment, Some("可以移动".to_string()));
 
         // CAN_ATTACK should use custom alias
         assert_eq!(e.variants[1].name, "CAN_ATTACK");
-        assert_eq!(e.variants[1].alias, "攻击");
+        assert_eq!(e.variants[1].alias, Some("攻击".to_string()));
         assert_eq!(e.variants[1].comment, Some("可以攻击".to_string()));
 
-        // NO_ALIAS should use lowercase name
+        // NO_ALIAS should have None alias
         assert_eq!(e.variants[2].name, "NO_ALIAS");
-        assert_eq!(e.variants[2].alias, "no_alias");
+        assert_eq!(e.variants[2].alias, None);
         assert_eq!(e.variants[2].comment, Some("无别名".to_string()));
     }
 
@@ -1032,15 +1106,104 @@ export enum Flags {
 
         assert_eq!(e.variants.len(), 4);
         assert_eq!(e.variants[0].name, "A");
-        assert_eq!(e.variants[0].value, 1);  // 1 << 0 = 1
+        assert_eq!(e.variants[0].value, "1");  // 1 << 0 = 1
 
         assert_eq!(e.variants[1].name, "B");
-        assert_eq!(e.variants[1].value, 2);  // 1 << 1 = 2
+        assert_eq!(e.variants[1].value, "2");  // 1 << 1 = 2
 
         assert_eq!(e.variants[2].name, "C");
-        assert_eq!(e.variants[2].value, 4);  // 1 << 2 = 4
+        assert_eq!(e.variants[2].value, "4");  // 1 << 2 = 4
 
         assert_eq!(e.variants[3].name, "D");
-        assert_eq!(e.variants[3].value, 16); // 1 << 4 = 16
+        assert_eq!(e.variants[3].value, "16"); // 1 << 4 = 16
+    }
+
+    #[test]
+    fn test_ignore_class() {
+        let ts_code = r#"
+/**
+ * 这个类应该被忽略
+ * @ignore
+ */
+export class IgnoredClass {
+    public name: string;
+}
+
+/**
+ * 这个类应该被导出
+ */
+export class ExportedClass {
+    public value: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        // Only ExportedClass should be present
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "ExportedClass");
+    }
+
+    #[test]
+    fn test_ignore_interface() {
+        let ts_code = r#"
+/**
+ * 这个接口应该被忽略
+ * @ignore
+ */
+export interface IgnoredInterface {
+    name: string;
+}
+
+/**
+ * 这个接口应该被导出
+ */
+export interface ExportedInterface {
+    value: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        // Only ExportedInterface should be present
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "ExportedInterface");
+    }
+
+    #[test]
+    fn test_ignore_enum() {
+        let ts_code = r#"
+/**
+ * 这个枚举应该被忽略
+ * @ignore
+ */
+export enum IgnoredEnum {
+    A = 1,
+    B = 2,
+}
+
+/**
+ * 这个枚举应该被导出
+ */
+export enum ExportedEnum {
+    X = 1,
+    Y = 2,
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let enums = parser.parse_enums(file.path()).unwrap();
+
+        // Only ExportedEnum should be present
+        assert_eq!(enums.len(), 1);
+        assert_eq!(enums[0].name, "ExportedEnum");
     }
 }

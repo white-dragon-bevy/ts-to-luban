@@ -345,12 +345,12 @@ fn main() -> Result<()> {
 
     // Generate bean type enums XML if configured (grouped by parent)
     if let Some(bean_types_path) = &config.output.bean_types_path {
-        // Collect beans with their resolved parents
-        let beans_with_parents: Vec<(&str, String)> = final_classes.iter()
-            .map(|c| (c.name.as_str(), base_resolver.resolve(c)))
+        // Collect beans with their resolved parents and aliases
+        let beans_with_parents: Vec<(&str, String, Option<&str>)> = final_classes.iter()
+            .map(|c| (c.name.as_str(), base_resolver.resolve(c), c.alias.as_deref()))
             .collect();
-        let beans_refs: Vec<(&str, &str)> = beans_with_parents.iter()
-            .map(|(name, parent)| (*name, parent.as_str()))
+        let beans_refs: Vec<(&str, &str, Option<&str>)> = beans_with_parents.iter()
+            .map(|(name, parent, alias)| (*name, parent.as_str(), *alias))
             .collect();
 
         let module_name = config.output.bean_types_module.as_deref().unwrap_or("types");

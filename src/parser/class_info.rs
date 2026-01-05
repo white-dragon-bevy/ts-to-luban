@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct ClassInfo {
     pub name: String,
     pub comment: Option<String>,
+    /// Optional alias from @alias tag in JSDoc
+    pub alias: Option<String>,
     pub fields: Vec<FieldInfo>,
     #[allow(dead_code)]
     pub implements: Vec<String>,

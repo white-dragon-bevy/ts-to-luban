@@ -60,6 +60,7 @@ export enum TriggerState {
  * - Buff 通过 mode='revoke' 剥夺权限
  * 
  * @flags="true"
+ * @alias:Foo
  */
 export enum UnitFlag {
 	/** 无权限 */
@@ -333,5 +334,16 @@ export interface UnitFlagsPreset {
 	baseFlags: UnitFlag;
 	/** 单位免疫权限,该掩码不会被其他掩码覆盖 */
 	immunityMask: UnitFlag;
+}
+
+/**
+ * 内部调试用枚举，不导出到 Luban
+ * @ignore
+ */
+export enum InternalDebugLevel {
+    Off = 0,
+    Error = 1,
+    Warning = 2,
+    Info = 3,
 }
 

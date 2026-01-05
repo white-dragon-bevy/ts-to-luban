@@ -7,17 +7,21 @@ tsconfig = "tsconfig.json"
 path = "output/generated.xml"
 cache_file = ".luban-cache.json"
 module_name = "triggers"
-# Bean 名称集合输出配置
-bean_names_path = "output/bean_names.xml"
-bean_names_module = "meta"
-# Bean 类型枚举输出配置（按 parent 分组）
+# Bean 类型枚举输出配置（按 parent 分组，使用全局 module_name）
 bean_types_path = "output/bean_types.xml"
-bean_types_module = "types"
 
-# 扫描目录
+# 单独测试 spec1.ts
+[[sources]]
+type = "file"
+path = "src/triggers/spec1.ts"
+output_path = "output/spec1.xml"
+module_name = "spec1"
+
+# 扫描目录 (包含 @ignore 测试)
 [[sources]]
 type = "directory"
 path = "src/triggers"
+output_path = "output/generated.xml"
 
 # Glob 模式匹配（支持 *, **, ? 等通配符）
 # [[sources]]

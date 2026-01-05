@@ -41,7 +41,7 @@ src/
 │   └── field_info.rs   # FieldInfo 结构
 ├── type_mapper.rs   # TS → Luban 类型映射
 ├── base_class.rs    # 父类解析 (仅配置决定，忽略 extends)
-├── generator.rs     # XML 生成 (bean, enum, bean names)
+├── generator.rs     # XML 生成 (bean, enum, bean types)
 ├── cache.rs         # 增量缓存系统
 ├── scanner.rs       # 文件扫描
 └── tsconfig.rs      # tsconfig.json 路径解析
@@ -66,6 +66,37 @@ src/
 ### 3. JSDoc 注释
 - 类注释 → `<bean comment="...">`
 - `@param` 标签 → `<var comment="...">`
+- `@alias` 标签 → `<bean alias="...">` 或 `<enum alias="...">`
+  - 支持两种格式：`@alias:别名` 或 `@alias="别名"`
+- `@ignore` 标签 → 不导出该类/接口/枚举
+
+**@ignore 示例**：
+```typescript
+/**
+ * 内部使用的辅助类，不导出到 Luban
+ * @ignore
+ */
+export class InternalHelper {
+    public helperData: string;
+}
+
+/**
+ * 内部接口，不导出
+ * @ignore
+ */
+export interface InternalInterface {
+    internalField: number;
+}
+
+/**
+ * 调试用枚举，不导出
+ * @ignore
+ */
+export enum DebugLevel {
+    Off = 0,
+    Error = 1,
+}
+```
 
 ### 4. 配置选项
 ```toml
@@ -148,11 +179,12 @@ export enum SkillStyle {
 </enum>
 ```
 
-**位标志枚举**（使用 `@flags="true"` 和 `@alias="xxx"`）：
+**位标志枚举**（使用 `@flags="true"` 和 `@alias`）：
 ```typescript
 /**
  * 单位权限标志
  * @flags="true"
+ * @alias:权限
  */
 export enum UnitFlag {
     /**
@@ -171,7 +203,7 @@ export enum UnitFlag {
 ```
 生成：
 ```xml
-<enum name="UnitFlag" flags="true" comment="单位权限标志">
+<enum name="UnitFlag" alias="权限" flags="true" comment="单位权限标志">
     <var name="CAN_MOVE" alias="移动" value="1" comment="可以移动"/>
     <var name="CAN_ATTACK" alias="攻击" value="2" comment="可以攻击"/>
     <var name="BASICS" alias="basics" value="3" comment="组合标志"/>
@@ -179,7 +211,8 @@ export enum UnitFlag {
 ```
 
 **规则**：
-- `alias` = `@alias="xxx"` 标签值，或小写的 name
+- 枚举 `alias` = `@alias:xxx` 或 `@alias="xxx"` 标签值（可选）
+- 成员 `alias` = `@alias="xxx"` 标签值，或小写的 name
 - `@flags="true"` 标签 → 生成 `flags="true"` 属性
 - 支持位运算表达式：`1 << N`、`A | B`、`A & B` 等
 - 支持枚举成员引用：`BASICS = CAN_MOVE | CAN_ATTACK`
@@ -194,46 +227,41 @@ path = "output/generated.xml"
 enum_path = "output/enums.xml"  # 可选：自定义枚举输出路径
 ```
 
-### 9. Bean 名称集合导出
-可以导出所有 bean 名称到一个特殊的 XML 文件：
+### 9. Bean 类型枚举导出（按 parent 分组）
+将所有 bean 按 parent 分组导出为枚举，用于类型安全的 bean 引用：
 
 ```toml
 [output]
-bean_names_path = "output/bean_names.xml"
-bean_names_module = "meta"  # 可选，默认 "meta"
-```
-
-生成固定格式：
-```xml
-<module name="meta" comment="bean name set">
-    <bean name="TsClassName">
-        <var name="name" type="string#(set=Bean1,Bean2,Bean3)"/>
-    </bean>
-</module>
-```
-
-### 10. Bean 类型枚举导出（按 parent 分组）
-将所有 bean 按 parent 分组导出为字符串枚举：
-
-```toml
-[output]
-bean_types_path = "output/bean_types.xml"
-bean_types_module = "types"  # 可选，默认 "types"
+path = "output/generated.xml"
+module_name = "triggers"
+bean_types_path = "output/bean_types.xml"  # 使用全局 module_name
 ```
 
 **规则**：
-- 每个 parent 生成一个独立的枚举
-- 字符串枚举（`tags="string"`）
-- `alias` = bean 名称（与 name 相同）
-- `value` 从 1 自动递增
+- 每个 parent 生成一个独立的枚举，名称为 `{parent}Enum`
+- `value` = bean 名称（字符串）
+- `alias` 仅当 bean 有 `@alias` 标签时生成
+- `comment` = bean 的注释
 - 没有 parent 的 bean 不会生成枚举
 
-**示例**：如果有 `DamageTrigger` 和 `HealTrigger` 的 parent 都是 `TriggerBase`，则生成：
+**示例**：
+```typescript
+/**
+ * 伤害触发器
+ * @alias:伤害
+ */
+export class DamageTrigger { ... }
+
+/** 治疗触发器 */
+export class HealTrigger { ... }
+```
+
+生成（假设 parent 都是 `TriggerBase`）：
 ```xml
-<module name="types" comment="自动生成的 bean 类型枚举">
-    <enum name="TriggerBase" comment="TriggerBase 的子类型" tags="string">
-        <var name="DamageTrigger" alias="DamageTrigger" value="1"/>
-        <var name="HealTrigger" alias="HealTrigger" value="2"/>
+<module name="triggers" comment="自动生成的 bean 类型枚举">
+    <enum name="TriggerBaseEnum" comment="TriggerBase 的子类型">
+        <var name="DamageTrigger" alias="伤害" value="DamageTrigger" comment="伤害触发器"/>
+        <var name="HealTrigger" value="HealTrigger" comment="治疗触发器"/>
     </enum>
 </module>
 ```

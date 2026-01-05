@@ -14,7 +14,7 @@
         <var name="enabled" type="bool" comment="是否启用"/>
     </bean>
 
-    <bean name="DamageTrigger" parent="TriggerBase" comment="伤害触发器">
+    <bean name="DamageTrigger" alias="伤害" parent="TriggerBase" comment="伤害触发器">
         <var name="damage" type="double"/>
         <var name="radius" type="double"/>
         <var name="targetTags" type="list,string"/>
@@ -34,7 +34,7 @@
         <var name="ref" type="HealTrigger"/>
     </bean>
 
-    <bean name="UnitFlagsModifier" comment="权限修改组件">
+    <bean name="UnitFlagsModifier" alias="权限修正" comment="权限修改组件">
         <var name="grant" type="UnitFlag?" comment="授予的权限位"/>
         <var name="revoke" type="UnitFlag?" comment="剥夺的权限位"/>
     </bean>
@@ -106,6 +106,37 @@
         <var name="position" type="Vector3"/>
         <var name="count" type="double"/>
         <var name="delay" type="double?"/>
+    </bean>
+
+    <bean name="CircleExplosionShape" comment="圆形爆炸形状配置">
+        <var name="type" type="string"/>
+        <var name="radius" type="double" comment="爆炸半径（米）"/>
+    </bean>
+
+    <bean name="BoxExplosionShape" comment="盒子爆炸形状配置">
+        <var name="type" type="string"/>
+        <var name="size" type="Vector3" comment="盒子尺寸（长宽高）"/>
+    </bean>
+
+    <bean name="SectorExplosionShape" comment="扇形爆炸形状配置">
+        <var name="type" type="string"/>
+        <var name="radius" type="double" comment="扇形半径（米）"/>
+        <var name="angle" type="double" comment="扇形角度（弧度）"/>
+        <var name="useEntityDirection" type="bool?" comment="是否使用爆炸实体的朝向作为方向（默认 true）"/>
+    </bean>
+
+    <bean name="TriangleExplosionShape" comment="三角形爆炸形状配置">
+        <var name="type" type="string"/>
+        <var name="vertex1" type="Vector3" comment="三角形的三个顶点（相对于爆炸中心的偏移）"/>
+        <var name="vertex2" type="Vector3"/>
+        <var name="vertex3" type="Vector3"/>
+    </bean>
+
+    <bean name="ExplosionData" comment="爆炸数据">
+        <var name="id" type="string"/>
+        <var name="shape" type="ExplosionShape?" comment="爆炸形状配置 如果未指定，默认使用圆形爆炸（半径从 radius 字段读取）"/>
+        <var name="radius" type="double?" comment="爆炸影响半径（米）"/>
+        <var name="triggerOnExplode" type="list,TriggerableComponentFactoryDefine" comment="爆炸触发器"/>
     </bean>
 
 </module>
