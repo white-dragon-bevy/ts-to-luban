@@ -38,6 +38,12 @@ pub struct OutputConfig {
     /// Module name for bean names collection (optional)
     #[serde(default)]
     pub bean_names_module: Option<String>,
+    /// Path to output bean type enums XML file (grouped by parent)
+    #[serde(default)]
+    pub bean_types_path: Option<PathBuf>,
+    /// Module name for bean type enums (optional)
+    #[serde(default)]
+    pub bean_types_module: Option<String>,
 }
 
 fn default_cache_file() -> PathBuf {

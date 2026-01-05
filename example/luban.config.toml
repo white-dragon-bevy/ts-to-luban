@@ -10,6 +10,9 @@ module_name = "triggers"
 # Bean 名称集合输出配置
 bean_names_path = "output/bean_names.xml"
 bean_names_module = "meta"
+# Bean 类型枚举输出配置（按 parent 分组）
+bean_types_path = "output/bean_types.xml"
+bean_types_module = "types"
 
 # 扫描目录
 [[sources]]

@@ -158,6 +158,58 @@ pub fn generate_bean_names_xml(bean_names: &[&str], module_name: &str) -> String
     lines.join("\n")
 }
 
+/// Generate XML for bean type enums grouped by parent
+/// Each parent becomes an enum with all beans that have that parent as variants
+/// Rules:
+/// - String enum with tags="string"
+/// - alias = name (same as variant name)
+/// - value auto-increments from 1
+/// - Beans without parent are excluded
+pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str)], module_name: &str) -> String {
+    use std::collections::HashMap;
+
+    // Group beans by parent
+    let mut parent_to_beans: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (bean_name, parent) in beans_with_parents {
+        if !parent.is_empty() {
+            parent_to_beans.entry(parent).or_default().push(bean_name);
+        }
+    }
+
+    let mut lines = vec![
+        r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
+        format!(r#"<module name="{}" comment="自动生成的 bean 类型枚举">"#, escape_xml(module_name)),
+        String::new(),
+    ];
+
+    // Sort parents for consistent output
+    let mut parents: Vec<_> = parent_to_beans.keys().collect();
+    parents.sort();
+
+    for parent in parents {
+        let beans = parent_to_beans.get(parent).unwrap();
+
+        // Generate enum for this parent
+        lines.push(format!(
+            r#"    <enum name="{}" comment="{} 的子类型" tags="string">"#,
+            parent, parent
+        ));
+
+        for (i, bean_name) in beans.iter().enumerate() {
+            lines.push(format!(
+                r#"        <var name="{}" alias="{}" value="{}"/>"#,
+                bean_name, bean_name, i + 1
+            ));
+        }
+
+        lines.push("    </enum>".to_string());
+        lines.push(String::new());
+    }
+
+    lines.push("</module>".to_string());
+    lines.join("\n")
+}
+
 #[cfg(test)]
 fn generate_xml(classes: &[ClassInfo], default_base: &str) -> String {
     let base_resolver = BaseClassResolver::new(default_base, &[]);

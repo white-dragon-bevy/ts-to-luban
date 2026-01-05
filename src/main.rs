@@ -18,7 +18,7 @@ use tsconfig::TsConfig;
 use parser::TsParser;
 use type_mapper::TypeMapper;
 use base_class::BaseClassResolver;
-use generator::{XmlGenerator, generate_enum_xml, generate_bean_names_xml};
+use generator::{XmlGenerator, generate_enum_xml, generate_bean_names_xml, generate_bean_type_enums_xml};
 use cache::Cache;
 
 #[derive(Parser)]
@@ -340,6 +340,36 @@ fn main() -> Result<()> {
             }
             std::fs::write(&resolved_path, &xml_output)?;
             println!("  Written bean names to {:?}", resolved_path);
+        }
+    }
+
+    // Generate bean type enums XML if configured (grouped by parent)
+    if let Some(bean_types_path) = &config.output.bean_types_path {
+        // Collect beans with their resolved parents
+        let beans_with_parents: Vec<(&str, String)> = final_classes.iter()
+            .map(|c| (c.name.as_str(), base_resolver.resolve(c)))
+            .collect();
+        let beans_refs: Vec<(&str, &str)> = beans_with_parents.iter()
+            .map(|(name, parent)| (*name, parent.as_str()))
+            .collect();
+
+        let module_name = config.output.bean_types_module.as_deref().unwrap_or("types");
+        let xml_output = generate_bean_type_enums_xml(&beans_refs, module_name);
+
+        let resolved_path = project_root.join(bean_types_path);
+        let should_write = if resolved_path.exists() {
+            let existing = std::fs::read_to_string(&resolved_path)?;
+            existing != xml_output
+        } else {
+            true
+        };
+
+        if should_write {
+            if let Some(parent) = resolved_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&resolved_path, &xml_output)?;
+            println!("  Written bean type enums to {:?}", resolved_path);
         }
     }
 

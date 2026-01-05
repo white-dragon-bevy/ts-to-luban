@@ -212,6 +212,32 @@ bean_names_module = "meta"  # 可选，默认 "meta"
 </module>
 ```
 
+### 10. Bean 类型枚举导出（按 parent 分组）
+将所有 bean 按 parent 分组导出为字符串枚举：
+
+```toml
+[output]
+bean_types_path = "output/bean_types.xml"
+bean_types_module = "types"  # 可选，默认 "types"
+```
+
+**规则**：
+- 每个 parent 生成一个独立的枚举
+- 字符串枚举（`tags="string"`）
+- `alias` = bean 名称（与 name 相同）
+- `value` 从 1 自动递增
+- 没有 parent 的 bean 不会生成枚举
+
+**示例**：如果有 `DamageTrigger` 和 `HealTrigger` 的 parent 都是 `TriggerBase`，则生成：
+```xml
+<module name="types" comment="自动生成的 bean 类型枚举">
+    <enum name="TriggerBase" comment="TriggerBase 的子类型" tags="string">
+        <var name="DamageTrigger" alias="DamageTrigger" value="1"/>
+        <var name="HealTrigger" alias="HealTrigger" value="2"/>
+    </enum>
+</module>
+```
+
 ## 开发注意事项
 
 - SWC 的 `TsUnionType` 在新版本中变为 `TsUnionOrIntersectionType::TsUnionType`
