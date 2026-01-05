@@ -18,7 +18,7 @@ use tsconfig::TsConfig;
 use parser::TsParser;
 use type_mapper::TypeMapper;
 use base_class::BaseClassResolver;
-use generator::{XmlGenerator, generate_enum_xml, generate_bean_names_xml, generate_bean_type_enums_xml};
+use generator::{XmlGenerator, generate_enum_xml, generate_bean_type_enums_xml};
 use cache::Cache;
 
 #[derive(Parser)]
@@ -320,41 +320,17 @@ fn main() -> Result<()> {
         }
     }
 
-    // Generate bean names XML if configured
-    if let Some(bean_names_path) = &config.output.bean_names_path {
-        let bean_names: Vec<&str> = final_classes.iter().map(|c| c.name.as_str()).collect();
-        let module_name = config.output.bean_names_module.as_deref().unwrap_or("meta");
-        let xml_output = generate_bean_names_xml(&bean_names, module_name);
-
-        let resolved_path = project_root.join(bean_names_path);
-        let should_write = if resolved_path.exists() {
-            let existing = std::fs::read_to_string(&resolved_path)?;
-            existing != xml_output
-        } else {
-            true
-        };
-
-        if should_write {
-            if let Some(parent) = resolved_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&resolved_path, &xml_output)?;
-            println!("  Written bean names to {:?}", resolved_path);
-        }
-    }
-
     // Generate bean type enums XML if configured (grouped by parent)
     if let Some(bean_types_path) = &config.output.bean_types_path {
-        // Collect beans with their resolved parents and aliases
-        let beans_with_parents: Vec<(&str, String, Option<&str>)> = final_classes.iter()
-            .map(|c| (c.name.as_str(), base_resolver.resolve(c), c.alias.as_deref()))
+        // Collect beans with their resolved parents, aliases, and comments
+        let beans_with_parents: Vec<(&str, String, Option<&str>, Option<&str>)> = final_classes.iter()
+            .map(|c| (c.name.as_str(), base_resolver.resolve(c), c.alias.as_deref(), c.comment.as_deref()))
             .collect();
-        let beans_refs: Vec<(&str, &str, Option<&str>)> = beans_with_parents.iter()
-            .map(|(name, parent, alias)| (*name, parent.as_str(), *alias))
+        let beans_refs: Vec<(&str, &str, Option<&str>, Option<&str>)> = beans_with_parents.iter()
+            .map(|(name, parent, alias, comment)| (*name, parent.as_str(), *alias, *comment))
             .collect();
 
-        let module_name = config.output.bean_types_module.as_deref().unwrap_or("types");
-        let xml_output = generate_bean_type_enums_xml(&beans_refs, module_name);
+        let xml_output = generate_bean_type_enums_xml(&beans_refs, &default_module);
 
         let resolved_path = project_root.join(bean_types_path);
         let should_write = if resolved_path.exists() {

@@ -5,10 +5,10 @@ use std::path::PathBuf;
 pub struct EnumVariant {
     /// Variant name (e.g., "Role")
     pub name: String,
-    /// Alias - from @alias tag or lowercase name (e.g., "role" or "移动")
-    pub alias: String,
-    /// Numeric value (auto-incremented for string enums)
-    pub value: i64,
+    /// Alias - only from @alias tag, None if not specified
+    pub alias: Option<String>,
+    /// Value as string (numeric value or original string value for string enums)
+    pub value: String,
     /// Optional comment from JSDoc (excludes @alias line)
     pub comment: Option<String>,
 }

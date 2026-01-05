@@ -30,6 +30,11 @@ impl<'a> XmlGenerator<'a> {
 
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo) {
         let parent = self.base_resolver.resolve(class);
+
+        let alias_attr = class.alias.as_ref()
+            .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
+            .unwrap_or_default();
+
         let comment_attr = class.comment.as_ref()
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
@@ -41,8 +46,8 @@ impl<'a> XmlGenerator<'a> {
         };
 
         lines.push(format!(
-            r#"    <bean name="{}"{}{}>"#,
-            class.name, parent_attr, comment_attr
+            r#"    <bean name="{}"{}{}{}>"#,
+            class.name, alias_attr, parent_attr, comment_attr
         ));
 
         for field in &class.fields {
@@ -124,42 +129,21 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
     ));
 
     for variant in &enum_info.variants {
+        let var_alias_attr = variant.alias.as_ref()
+            .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
+            .unwrap_or_default();
+
         let var_comment_attr = variant.comment.as_ref()
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
         lines.push(format!(
-            r#"        <var name="{}" alias="{}" value="{}"{}/>"#,
-            variant.name, variant.alias, variant.value, var_comment_attr
+            r#"        <var name="{}" value="{}"{}{}/>"#,
+            variant.name, escape_xml(&variant.value), var_alias_attr, var_comment_attr
         ));
     }
 
     lines.push("    </enum>".to_string());
-}
-
-/// Generate XML for bean names collection
-/// Creates beans:
-/// - TsClassName: single bean name (string#set)
-/// - TsClassNames: multiple bean names (list,string#set)
-pub fn generate_bean_names_xml(bean_names: &[&str], module_name: &str) -> String {
-    let set_value = bean_names.join(",");
-
-    let lines = vec![
-        r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
-        format!(r#"<module name="{}" comment="bean name set">"#, escape_xml(module_name)),
-        String::new(),
-        r#"    <bean name="TsClassName">"#.to_string(),
-        format!(r#"        <var name="name" type="string#(set={})"/>"#, set_value),
-        r#"    </bean>"#.to_string(),
-        String::new(),
-        r#"    <bean name="TsClassNames">"#.to_string(),
-        format!(r#"        <var name="names" type="list,string#(set={})"/>"#, set_value),
-        r#"    </bean>"#.to_string(),
-        String::new(),
-        "</module>".to_string(),
-    ];
-
-    lines.join("\n")
 }
 
 /// Generate XML for bean type enums grouped by parent
@@ -167,16 +151,17 @@ pub fn generate_bean_names_xml(bean_names: &[&str], module_name: &str) -> String
 /// Rules:
 /// - value = bean name (string)
 /// - alias only generated when @alias tag exists
+/// - comment from bean is included if present
 /// - Beans without parent are excluded
-/// Input: (bean_name, parent, alias)
-pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&str>)], module_name: &str) -> String {
+/// Input: (bean_name, parent, alias, comment)
+pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&str>, Option<&str>)], module_name: &str) -> String {
     use std::collections::HashMap;
 
-    // Group beans by parent: parent -> [(bean_name, alias)]
-    let mut parent_to_beans: HashMap<&str, Vec<(&str, Option<&str>)>> = HashMap::new();
-    for (bean_name, parent, alias) in beans_with_parents {
+    // Group beans by parent: parent -> [(bean_name, alias, comment)]
+    let mut parent_to_beans: HashMap<&str, Vec<(&str, Option<&str>, Option<&str>)>> = HashMap::new();
+    for (bean_name, parent, alias, comment) in beans_with_parents {
         if !parent.is_empty() {
-            parent_to_beans.entry(parent).or_default().push((bean_name, *alias));
+            parent_to_beans.entry(parent).or_default().push((bean_name, *alias, *comment));
         }
     }
 
@@ -195,20 +180,25 @@ pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&s
 
         // Generate enum for this parent
         lines.push(format!(
-            r#"    <enum name="{}" comment="{} 的子类型">"#,
+            r#"    <enum name="{}Enum" comment="{} 的子类型">"#,
             parent, parent
         ));
 
-        for (bean_name, alias) in beans.iter() {
+        for (bean_name, alias, comment) in beans.iter() {
             // Only include alias attribute if @alias tag exists
             let alias_attr = alias
                 .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
                 .unwrap_or_default();
+            // Include comment attribute if present
+            let comment_attr = comment
+                .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
+                .unwrap_or_default();
             lines.push(format!(
-                r#"        <var name="{}"{}value="{}"/>"#,
+                r#"        <var name="{}"{}value="{}"{}/>"#,
                 bean_name,
                 if alias_attr.is_empty() { " ".to_string() } else { format!("{} ", alias_attr) },
-                bean_name
+                bean_name,
+                comment_attr
             ));
         }
 
@@ -376,14 +366,14 @@ mod tests {
             variants: vec![
                 EnumVariant {
                     name: "Role".to_string(),
-                    alias: "role".to_string(),
-                    value: 1,
+                    alias: None,  // No @alias tag
+                    value: "role".to_string(),  // Original string value
                     comment: Some("角色".to_string()),
                 },
                 EnumVariant {
                     name: "Consumable".to_string(),
-                    alias: "consumable".to_string(),
-                    value: 2,
+                    alias: None,
+                    value: "consumable".to_string(),
                     comment: Some("消耗品".to_string()),
                 },
             ],
@@ -395,8 +385,9 @@ mod tests {
 
         let xml = generate_enum_xml(&[enum_info], "test");
         assert!(xml.contains(r#"<enum name="ItemType" comment="物品类型" tags="string">"#));
-        assert!(xml.contains(r#"<var name="Role" alias="role" value="1" comment="角色"/>"#));
-        assert!(xml.contains(r#"<var name="Consumable" alias="consumable" value="2" comment="消耗品"/>"#));
+        // No alias attribute, value is the original string
+        assert!(xml.contains(r#"<var name="Role" value="role" comment="角色"/>"#));
+        assert!(xml.contains(r#"<var name="Consumable" value="consumable" comment="消耗品"/>"#));
     }
 
     #[test]
@@ -412,14 +403,14 @@ mod tests {
             variants: vec![
                 EnumVariant {
                     name: "Attack".to_string(),
-                    alias: "attack".to_string(),
-                    value: 1,
+                    alias: None,  // No @alias tag
+                    value: "1".to_string(),
                     comment: Some("攻击技能".to_string()),
                 },
                 EnumVariant {
                     name: "Defense".to_string(),
-                    alias: "defense".to_string(),
-                    value: 2,
+                    alias: None,
+                    value: "2".to_string(),
                     comment: None,
                 },
             ],
@@ -433,21 +424,9 @@ mod tests {
         // Number enum should NOT have tags="string"
         assert!(xml.contains(r#"<enum name="SkillStyle" comment="技能类型">"#));
         assert!(!xml.contains(r#"tags="string""#));
-        assert!(xml.contains(r#"<var name="Attack" alias="attack" value="1" comment="攻击技能"/>"#));
-        assert!(xml.contains(r#"<var name="Defense" alias="defense" value="2"/>"#));
-    }
-
-    #[test]
-    fn test_generate_bean_names_xml() {
-        let bean_names = vec!["DamageTrigger", "HealTrigger", "SpawnTrigger"];
-        let xml = generate_bean_names_xml(&bean_names, "meta");
-
-        assert!(xml.contains(r#"<module name="meta" comment="bean name set">"#));
-        assert!(xml.contains(r#"<bean name="TsClassName">"#));
-        assert!(xml.contains(r#"<var name="name" type="string#(set=DamageTrigger,HealTrigger,SpawnTrigger)"/>"#));
-        // TsClassNames with list type
-        assert!(xml.contains(r#"<bean name="TsClassNames">"#));
-        assert!(xml.contains(r#"<var name="names" type="list,string#(set=DamageTrigger,HealTrigger,SpawnTrigger)"/>"#));
+        // No alias attribute
+        assert!(xml.contains(r#"<var name="Attack" value="1" comment="攻击技能"/>"#));
+        assert!(xml.contains(r#"<var name="Defense" value="2"/>"#));
     }
 
     #[test]
@@ -463,14 +442,14 @@ mod tests {
             variants: vec![
                 EnumVariant {
                     name: "CAN_MOVE".to_string(),
-                    alias: "移动".to_string(),
-                    value: 1,
+                    alias: Some("移动".to_string()),  // Has @alias tag
+                    value: "1".to_string(),
                     comment: Some("可以移动".to_string()),
                 },
                 EnumVariant {
                     name: "CAN_ATTACK".to_string(),
-                    alias: "攻击".to_string(),
-                    value: 2,
+                    alias: Some("攻击".to_string()),
+                    value: "2".to_string(),
                     comment: Some("可以攻击".to_string()),
                 },
             ],
@@ -483,8 +462,8 @@ mod tests {
         let xml = generate_enum_xml(&[enum_info], "test");
         // Should have flags="true" attribute
         assert!(xml.contains(r#"<enum name="UnitFlag" flags="true" comment="权限控制">"#));
-        // Should use custom alias
-        assert!(xml.contains(r#"<var name="CAN_MOVE" alias="移动" value="1" comment="可以移动"/>"#));
-        assert!(xml.contains(r#"<var name="CAN_ATTACK" alias="攻击" value="2" comment="可以攻击"/>"#));
+        // Should have alias attribute (from @alias tag)
+        assert!(xml.contains(r#"<var name="CAN_MOVE" value="1" alias="移动" comment="可以移动"/>"#));
+        assert!(xml.contains(r#"<var name="CAN_ATTACK" value="2" alias="攻击" comment="可以攻击"/>"#));
     }
 }
