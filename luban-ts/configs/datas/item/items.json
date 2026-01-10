@@ -1,0 +1,20 @@
+[
+    {
+        "id": 1,
+        "name": "铁剑",
+        "category": "weapon",
+        "stackLimit": 1
+    },
+    {
+        "id": 2,
+        "name": "生命药水",
+        "category": "consumable",
+        "stackLimit": 99
+    },
+    {
+        "id": 3,
+        "name": "铁矿石",
+        "category": "material",
+        "stackLimit": 999
+    }
+]

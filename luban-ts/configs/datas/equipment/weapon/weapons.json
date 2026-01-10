@@ -1,0 +1,8 @@
+[
+    {
+        "id": 1,
+        "name": "铁剑",
+        "damage": 10,
+        "attackSpeed": 1.0
+    }
+]

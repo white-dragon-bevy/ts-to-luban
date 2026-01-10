@@ -1,0 +1,23 @@
+[
+    {
+        "id": 1,
+        "name": "史莱姆",
+        "level": 1,
+        "hp": 100,
+        "skills": [1],
+        "drops": [
+            { "itemId": 3, "count": 2, "probability": 50 }
+        ]
+    },
+    {
+        "id": 2,
+        "name": "哥布林",
+        "level": 5,
+        "hp": 500,
+        "skills": [1, 2],
+        "drops": [
+            { "itemId": 1, "count": 1, "probability": 10 },
+            { "itemId": 2, "count": 1, "probability": 30 }
+        ]
+    }
+]

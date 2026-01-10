@@ -1,0 +1,12 @@
+[
+    {
+        "id": 1,
+        "skillName": "火球术",
+        "cooldown": 5
+    },
+    {
+        "id": 2,
+        "skillName": "治疗术",
+        "cooldown": 10
+    }
+]

@@ -1,0 +1,12 @@
+[
+    {
+        "id": 1,
+        "difficultyLevel": 1,
+        "difficultyName": "简单"
+    },
+    {
+        "id": 2,
+        "difficultyLevel": 2,
+        "difficultyName": "普通"
+    }
+]

@@ -17,6 +17,13 @@ path = "src/__examples__/items.ts"
 output_path = "configs/defines/items.xml"
 module_name = "items"
 
+# 第三个数据源 - 不同 mode 的 table
+[[sources]]
+type = "file"
+path = "src/__examples__/table-modes.ts"
+output_path = "configs/defines/table-modes.xml"
+module_name = "modes"
+
 # table_mappings - 按模块匹配
 [[table_mappings]]
 pattern = "Weapon|Armor"

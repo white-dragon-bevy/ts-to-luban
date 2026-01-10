@@ -1,0 +1,6 @@
+{
+    "id": 1,
+    "maxPlayers": 100,
+    "gameVersion": "1.0.0",
+    "debugMode": false
+}

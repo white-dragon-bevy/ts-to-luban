@@ -14,7 +14,7 @@ type PropertyDecorator = (
 
 export interface LubanTableConfig {
   mode: "map" | "list" | "one" | "singleton";
-  index: string;
+  index?: string;
   group?: string;
   tags?: string;
 }
