@@ -1,234 +1,226 @@
 ---
-name: ts-to-luban
-description: 用于将 TypeScript 类/接口/枚举转换为 Luban XML Schema 定义、配置源文件模式、设置父类映射或排查 schema 生成问题 - 提供完整的 CLI 用法、配置参考和类型映射规则
+name: configuring-ts-luban
+description: 用于配置 ts-luban 将 TypeScript 类转换为 Luban XML Schema - 涵盖 TOML 配置包括 sources、table_mappings、ref_configs、scan_options 和 output paths，基于 src/config.rs 和 src/scanner.rs 的实际 Rust 实现
 ---
 
-# ts-to-luban
+# 配置 ts-luban
 
 ## 概述
 
-高性能 Rust 工具，将 TypeScript 类、接口和枚举转换为 Luban XML Schema 定义。使用 SWC 解析 TypeScript，使用 Rayon 进行并行处理。
-
-**核心原则：** 配置决定一切 - TypeScript 的 `extends` 被忽略，父类完全由配置模式决定。
+ts-luban 将使用 `@LubanTable` 装饰器的 TypeScript 类转换为 Luban XML 定义，并生成类型安全的 table 加载器。配置使用 TOML 格式，由 `src/config.rs` 的 Rust 实现解析。
 
 ## 使用场景
 
-- 将 TypeScript 类型定义转换为 Luban XML schema
-- 为项目配置 `luban.config.toml`
-- 使用正则表达式配置父类映射
-- 添加 JSDoc 注解（alias、flags、注释）
-- 排查 schema 生成问题
-- 了解类型映射规则（TS → Luban）
-
-## 安装
-
-```bash
-npm install @white-dragon-bevy/ts-to-luban
+```
+需要配置 ts-luban？ → 是：使用此技能
 ```
 
-## 快速命令
+- 创建新的 `ts-luban.config.toml`
+- 调试缺失的 beans/tables/enums
+- 设置跨包引用
+- 理解为什么某些文件被排除
+- 配置 TypeScript table 代码生成
 
-```bash
-# 使用配置运行
-npx luban-gen -c luban.config.toml
+## 快速参考
 
-# 强制重新生成（忽略缓存）
-npx luban-gen -c luban.config.toml -f
+| 问题 | 解决方案 |
+|------|----------|
+| 枚举混在 beans 中 | 添加 `enum_path = "output/enums.xml"` |
+| @Ref 跨包失败 | 添加 `[[ref_configs]]` 指向外部配置 |
+| 没有生成 `<table>` 元素 | 为 @LubanTable 类添加 `[[table_mappings]]` |
+| 测试文件 (.spec.ts) 被排除 | **自动行为** - 无法禁用 |
+| .d.ts 文件被排除 | 添加 `scan_options = { include_dts = true }` |
+| node_modules 被排除 | 添加 `scan_options = { include_node_modules = true }` |
+| {name} 占位符错误 | `{name}` = **小写**类名（如 `TbItem` → `tbitem`）
+
+## 配置结构
+
+```toml
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output/beans.xml"           # 源的默认输出路径
+module_name = ""                     # 默认模块名（空字符串）
+cache_file = ".luban-cache.json"     # 缓存文件（默认：.luban-cache.json）
+enum_path = "output/enums.xml"      # 单独的枚举输出（可选）
+bean_types_path = "output/types.xml" # Bean 类型枚举（可选）
+table_output_path = "out/tables"     # TS table 代码生成（可选）
+
+[[sources]]
+type = "directory"                   # | "file" | "files" | "glob"
+path = "src/types"
+module_name = "types"                # 覆盖默认 module_name
+output_path = "custom.xml"           # 覆盖默认输出路径
+scan_options = { include_dts = true } # 仅用于 directory 类型
+
+[[table_mappings]]
+pattern = "Tb.*"                     # 正则表达式模式
+input = "data/{name}.xlsx"           # {name} = 小写类名
+output = "{name}"                    # 可选的输出模板
+
+[[ref_configs]]
+path = "../shared-pkg/ts-luban.config.toml"
+
+[type_mappings]
+Vector3 = "Vector3"
 ```
 
-## 配置参考
+## 源类型
 
-### 基本结构
+| 类型 | 字段 | 说明 |
+|------|------|------|
+| `directory` | `path`, `output_path?`, `module_name?`, `scan_options?` | 递归扫描 |
+| `file` | `path`, `output_path?`, `module_name?` | 单个文件 |
+| `files` | `paths`, `output_path?`, `module_name?` | 多个文件 |
+| `glob` | `pattern`, `output_path?`, `module_name?` | 模式匹配 |
+| `registration` | `path` | **尚未实现** |
+
+**ScanOptions**（仅 directory 类型）：
+- `include_dts: bool` - 包含 `.d.ts` 文件（默认：false）
+- `include_node_modules: bool` - 包含 `node_modules`（默认：false）
+
+## 自动文件排除
+
+**总是排除**（无法禁用）：
+- 测试文件：`.spec.ts`, `.test.ts`, `.spec.tsx`, `.test.tsx`
+
+**有条件排除**：
+- `.d.ts` 文件 → 除非 `include_dts = true` 否则排除
+- `node_modules` → 除非 `include_node_modules = true` 否则排除
+
+**默认包含**：
+- 仅 `.ts` 和 `.tsx` 文件
+
+## Table 映射
+
+`@LubanTable` 类需要 `[[table_mappings]]` 来生成 `<table>` 元素。
+
+```toml
+[[table_mappings]]
+pattern = "Tb.*"                     # 正则：以 "Tb" 开头的类
+input = "data/{name}.xlsx"           # {name} = 小写类名
+output = "{name}"                    # 可选
+```
+
+**关键：`{name}` 占位符行为：**
+- `{name}` 被替换为**小写**类名
+- `TbItem` → `{name}` → `tbitem` → `data/tbitem.xlsx`
+- `MonsterConfig` → `{name}` → `monsterconfig` → `data/monsterconfig.xlsx`
+
+**模式匹配：**
+- 第一个匹配生效（按顺序处理）
+- 使用正则语法（如 `Tb.*`, `.*Config$`, `^TbItem$`）
+
+## 跨包引用
+
+使用 `[[ref_configs]]` 引用其他包中定义的 beans（`@Ref` 需要）：
+
+```toml
+[[ref_configs]]
+path = "../shared-pkg/ts-luban.config.toml"
+```
+
+**路径解析：**
+- 源路径相对于引用配置的目录解析
+- `output_path` 不解析 - 使用运行时根目录
+- 支持递归加载
+
+## 输出路径行为
+
+- `[output]path` = 没有 `output_path` 的源的默认值
+- `[[sources]]output_path` = 每个源的覆盖
+- 多个源可以有不同的 `output_path` 值
 
 ```toml
 [output]
-path = "output/generated.xml"      # 主 bean 输出
-enum_path = "output/enums.xml"     # 可选：枚举输出（默认：{output}_enums.xml）
-bean_types_path = "output/types.xml"  # 可选：bean 类型枚举（使用全局 module_name）
-module_name = ""                   # 模块名（空字符串 = 不包装 <module>）
+path = "default.xml"  # 当源没有 output_path 时使用
 
-[defaults]
-base_class = "BaseClass"           # 所有 bean 的默认父类
-
-[[parent_mappings]]
-pattern = ".*Trigger$"             # 匹配类名的正则表达式
-parent = "TsTriggerClass"          # 匹配时分配的父类
-
-[[sources]]
-type = "file"                      # 源类型（见下文）
-path = "src/types.ts"
-module_name = "types"              # 可选：覆盖默认 module_name
-output_path = "output/types.xml"   # 可选：覆盖默认输出路径
-```
-
-### 源类型
-
-| 类型 | 用途 | 关键字段 |
-|------|------|----------|
-| `file` | 单个文件 | `path` |
-| `files` | 多个文件 | `paths`（数组） |
-| `directory` | 目录扫描 | `path`, `scan_options` |
-| `glob` | 模式匹配 | `pattern`（如 `src/**/*Trigger.ts`） |
-| `registration` | 注册文件 | （未完全实现） |
-
-**示例：**
-
-```toml
-# 单个文件
-[[sources]]
-type = "file"
-path = "src/triggers/damage.ts"
-
-# 多个文件共享配置
-[[sources]]
-type = "files"
-paths = ["src/a.ts", "src/b.ts"]
-output_path = "output/ab.xml"
-
-# 带选项的目录
 [[sources]]
 type = "directory"
-path = "src/triggers"
-scan_options = { include_dts = true }
+path = "src/configs"
+output_path = "configs.xml"  # 使用这个代替
 
-# Glob 模式
 [[sources]]
-type = "glob"
-pattern = "src/**/*Trigger.ts"
-output_path = "output/triggers.xml"
+type = "directory"
+path = "src/entities"
+# 使用 default.xml（未指定 output_path）
 ```
 
 ## 类型映射
 
-| TypeScript | Luban |
-|------------|-------|
-| `number` | `double` |
-| `string` | `string` |
-| `boolean` | `bool` |
-| `int` / `float` / `long` | 保持不变 |
-| `T[]` / `Array<T>` | `list,T` |
-| `Map<K,V>` / `Record<K,V>` | `map,K,V` |
+将 TypeScript 类型映射到 Luban 类型：
 
-## JSDoc 注解
-
-### 类/接口级别
-
-```typescript
-/**
- * 伤害触发器描述
- * @alias:伤害触发器
- */
-export class DamageTrigger { ... }
+```toml
+[type_mappings]
+Vector3 = "Vector3"
+Color3 = "math.Color3"
+Entity = "long"
 ```
 
-生成：`<bean name="DamageTrigger" alias="伤害触发器" comment="伤害触发器描述">`
+## 默认值
 
-### 字段级别
+| 字段 | 默认值 |
+|------|--------|
+| `module_name` | `""` (空字符串) |
+| `cache_file` | `.luban-cache.json` |
+| `sources` | `[]` (空) |
+| `table_mappings` | `[]` (空) |
+| `ref_configs` | `[]` (空) |
+| `type_mappings` | `{}` (空) |
+| `defaults` | 空结构体（无字段） |
 
-```typescript
-export class Example {
-    /** @param 字段描述 */
-    damage: number;
-}
+## 完整示例
+
+```toml
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "configs/defines/beans.xml"
+enum_path = "configs/defines/enums.xml"
+bean_types_path = "configs/defines/bean_types.xml"
+table_output_path = "out/tables"
+
+[[sources]]
+type = "directory"
+path = "src/configs"
+module_name = "configs"
+
+[[sources]]
+type = "glob"
+pattern = "src/**/*Trigger.ts"
+module_name = "triggers"
+
+[[ref_configs]]
+path = "../shared/ts-luban.config.toml"
+
+[[table_mappings]]
+pattern = "Tb.*"
+input = "data/{name}.xlsx"
+output = "{name}"
+
+[type_mappings]
+Vector3 = "math.Vector3"
 ```
 
-生成：`<var name="damage" type="double" comment="字段描述"/>`
+## 运行
 
-### @ignore 标签
+```bash
+# 生成
+cargo run -- -c ts-luban.config.toml
 
-使用 `@ignore` 标签排除不需要导出的类、接口或枚举：
-
-```typescript
-/**
- * 内部使用的辅助类，不导出到 Luban
- * @ignore
- */
-export class InternalHelper {
-    public helperData: string;
-}
-
-/**
- * 内部接口，不导出
- * @ignore
- */
-export interface InternalInterface {
-    internalField: number;
-}
-
-/**
- * 调试用枚举，不导出
- * @ignore
- */
-export enum DebugLevel {
-    Off = 0,
-    Error = 1,
-}
+# 强制重新生成（忽略缓存）
+cargo run -- -c ts-luban.config.toml -f
 ```
 
-带有 `@ignore` 标签的类型不会出现在生成的 XML 中。
+## 实现细节
 
-### 枚举注解
+**来自实际 Rust 代码的关键行为（`src/config.rs`, `src/scanner.rs`, `src/table_mapping.rs`）：**
 
-```typescript
-/**
- * 单位标志
- * @flags="true"
- * @alias:权限
- */
-export enum UnitFlag {
-    /** @alias="移动" */
-    CAN_MOVE = 1 << 0,
-    CAN_ATTACK = 1 << 1,
-    BASICS = CAN_MOVE | CAN_ATTACK,  // 支持位运算表达式
-}
-```
-
-生成：
-```xml
-<enum name="UnitFlag" alias="权限" flags="true" comment="单位标志">
-    <var name="CAN_MOVE" alias="移动" value="1"/>
-    <var name="CAN_ATTACK" alias="can_attack" value="2"/>
-    <var name="BASICS" alias="basics" value="3"/>
-</enum>
-```
-
-## 枚举规则
-
-| 枚举类型 | `tags` 属性 | `value` |
-|----------|-------------|---------|
-| 字符串枚举 | `tags="string"` | 从 1 自动递增 |
-| 数值枚举 | （无） | 原始数值 |
-| 标志枚举 | + `flags="true"` | 计算后的位运算结果 |
-
-**位运算表达式：** 支持 `1 << N`、`A | B`、`A & B` 和成员引用。例如 `BASICS = CAN_MOVE | CAN_ATTACK` 计算为 `3`（1 | 2）。
-
-**成员 alias：** 使用 `@alias="..."` 的值，否则使用小写的 name。
-
-## 父类解析优先级
-
-1. `[[parent_mappings]]` 正则匹配（第一个匹配生效）
-2. `[defaults].base_class`（兜底）
-
-**重要：** TypeScript 的 `extends` 关键字被完全忽略。父类 100% 由配置决定。
-
-## Bean 类型枚举
-
-配置 `bean_types_path` 后，会按父类分组生成枚举：
-
-```xml
-<enum name="TriggerBaseEnum" comment="TriggerBase 的子类型">
-    <var name="DamageTrigger" alias="伤害" value="DamageTrigger" comment="..."/>
-    <var name="HealTrigger" value="HealTrigger" comment="..."/>
-</enum>
-```
-
-## 常见问题
-
-| 问题 | 解决方法 |
-|------|----------|
-| 期望 `extends` 设置父类 | 使用 `[[parent_mappings]]` 或 `defaults.base_class` |
-| 枚举输出缺失 | 检查 `enum_path` 配置或查找 `{output}_enums.xml` |
-| 枚举 alias 未生效 | 在 JSDoc 中使用 `@alias:xxx` 或 `@alias="xxx"` |
-| Glob 模式不匹配 | 确认使用正斜杠，检查 `**` 匹配子目录 |
-| 缓存导致未更新 | 使用 `-f` 标志强制重新生成 |
-| 需要排除某些类型 | 在 JSDoc 中添加 `@ignore` 标签 |
+1. **`{name}` 占位符**：替换为小写类名（`table_mapping.rs:23`）
+2. **测试文件**：总是排除（`scanner.rs:50-57`）
+3. **`output_path`**：不相对于配置目录解析（`config.rs:140`）
+4. **Glob 模式**：使用标准 glob 语法（`*`, `**`, `?`, `[abc]`）
+5. **DefaultsConfig**：无字段的空结构体（`config.rs:84-85`）
+6. **Registration 类型**：存在于枚举中但未实现（`config.rs:80`）

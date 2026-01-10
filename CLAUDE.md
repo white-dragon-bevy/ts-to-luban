@@ -1,6 +1,6 @@
 # Luban Schema Generator
 
-高性能 Rust 工具，将 TypeScript 类/接口转换为 Luban XML Schema 定义。
+高性能 Rust 工具，将 TypeScript 类/接口转换为 Luban XML Schema 定义，支持装饰器验证和 TypeScript Table 代码生成。
 
 ## 项目概述
 
@@ -18,10 +18,10 @@
 cargo build --release
 
 # 运行示例
-cargo run -- -c example/luban.config.toml
+cargo run -- -c luban-ts/luban.config.toml
 
 # 强制重新生成（忽略缓存）
-cargo run -- -c example/luban.config.toml -f
+cargo run -- -c luban-ts/luban.config.toml -f
 
 # 运行测试
 cargo test
@@ -31,20 +31,35 @@ cargo test
 
 ```
 src/
-├── main.rs          # CLI 入口
-├── lib.rs           # 库导出
-├── config.rs        # TOML 配置解析
-├── parser.rs        # TypeScript AST 解析 (SWC)
+├── main.rs              # CLI 入口
+├── lib.rs               # 库导出
+├── config.rs            # TOML 配置解析
+├── parser.rs            # TypeScript AST 解析 (SWC)
 ├── parser/
-│   ├── class_info.rs   # ClassInfo 结构
-│   ├── enum_info.rs    # EnumInfo 结构
-│   └── field_info.rs   # FieldInfo 结构
-├── type_mapper.rs   # TS → Luban 类型映射
-├── base_class.rs    # 父类解析 (仅配置决定，忽略 extends)
-├── generator.rs     # XML 生成 (bean, enum, bean types)
-├── cache.rs         # 增量缓存系统
-├── scanner.rs       # 文件扫描
-└── tsconfig.rs      # tsconfig.json 路径解析
+│   ├── class_info.rs    # ClassInfo + LubanTableConfig
+│   ├── enum_info.rs     # EnumInfo 结构
+│   ├── field_info.rs    # FieldInfo + FieldValidators
+│   └── decorator.rs     # 装饰器 AST 解析
+├── type_mapper.rs       # TS → Luban 类型映射
+├── generator.rs         # XML 生成 (bean, enum, table)
+├── validator.rs         # 验证器语法生成
+├── table_registry.rs    # @LubanTable 类注册表
+├── table_mapping.rs     # table_mappings 解析
+├── ts_generator/        # TypeScript 代码生成
+│   ├── mod.rs           # TsCodeGenerator 入口
+│   ├── creator_gen.rs   # Creator 函数生成
+│   ├── table_gen.rs     # Table 加载器生成
+│   ├── registry_gen.rs  # Registry 生成
+│   ├── index_gen.rs     # Index 入口生成
+│   └── import_resolver.rs # Import 路径解析
+├── cache.rs             # 增量缓存系统
+├── scanner.rs           # 文件扫描
+└── tsconfig.rs          # tsconfig.json 路径解析
+
+luban-ts/                # npm 包 (roblox-ts)
+├── src/index.ts         # 装饰器定义
+├── package.json
+└── tsconfig.json
 ```
 
 ## 核心功能
@@ -56,104 +71,226 @@ src/
 - `int` / `float` / `long` → 保持原样
 - `T[]` / `Array<T>` → `list,T`
 - `Map<K,V>` / `Record<K,V>` → `map,K,V`
+- `ObjectFactory<T>` → `T` + `tags="objectFactory"`
 
-### 2. 父类解析优先级
-1. `[[parent_mappings]]` 正则匹配
-2. `defaults.base_class` (默认)
+### 2. 父类解析
 
-> **注意**: TypeScript 的 `extends` 关键字被忽略，parent 完全由配置决定。
+Bean 的 `parent` 属性**完全由 TypeScript 的 `extends` 关键字决定**。
 
-### 3. JSDoc 注释
+**示例**：
+```typescript
+class BaseEntity {
+    public id: number;
+}
+
+class Player extends BaseEntity {
+    public name: string;
+}
+
+class Standalone {
+    public data: string;
+}
+```
+
+生成：
+```xml
+<bean name="BaseEntity">
+    <var name="id" type="double"/>
+</bean>
+
+<bean name="Player" parent="BaseEntity">
+    <var name="name" type="string"/>
+</bean>
+
+<bean name="Standalone">
+    <var name="data" type="string"/>
+</bean>
+```
+
+**规则**：
+- 有 `extends` → 生成 `parent` 属性
+- 无 `extends` → 无 `parent` 属性
+- class 和 interface 行为一致
+
+### 3. 装饰器支持
+
+#### @LubanTable 类装饰器
+
+标记类为数据表，自动生成 `<table>` 元素。
+
+```typescript
+import { LubanTable } from "@white-dragon-bevy/ts-to-luban";
+
+@LubanTable({ mode: "map", index: "id", group: "client" })
+export class TbItem {
+    public id: number;
+    public name: string;
+}
+```
+
+生成：
+```xml
+<bean name="TbItem">
+    <var name="id" type="double"/>
+    <var name="name" type="string"/>
+</bean>
+
+<table name="TbItemTable" value="TbItem" mode="map" index="id"
+       input="configs/TbItem.xlsx" output="TbItem" group="client"/>
+```
+
+**LubanTableConfig 选项**：
+- `mode`: `"map"` | `"list"` | `"one"` | `"singleton"`
+- `index`: 索引字段名（mode="map" 时必填）
+- `group`: 可选，分组标签
+- `tags`: 可选，附加标签
+
+#### 字段验证器装饰器
+
+| 装饰器 | 说明 | 生成的 Luban 语法 |
+|--------|------|------------------|
+| `@Ref(TbItem)` | 引用验证 | `type="double#ref=item.TbItem"` |
+| `@Range(1, 100)` | 数值范围 | `type="double#range=[1,100]"` |
+| `@Required()` | 必填 | `type="string!"` |
+| `@Size(4)` | 固定大小 | `type="(list#size=4),double"` |
+| `@Size(2, 5)` | 大小范围 | `type="(list#size=[2,5]),double"` |
+| `@Set(1, 2, 3)` | 值集合 | `type="double#set=1,2,3"` |
+| `@Index("id")` | 列表索引 | `type="(list#index=id),Foo"` |
+| `@Nominal()` | 名义类型 | `nominal="true"` |
+
+**组合示例**：
+```typescript
+@Ref(TbItem)
+@Required()
+itemId: number;
+// → type="double!#ref=item.TbItem"
+```
+
+#### ObjectFactory<T> 泛型
+
+用于延迟创建多态对象：
+
+```typescript
+import { ObjectFactory } from "@white-dragon-bevy/ts-to-luban";
+
+export class CharacterConfig {
+    public triggers: ObjectFactory<BaseTrigger>[];
+}
+```
+
+生成：
+```xml
+<var name="triggers" type="list,BaseTrigger" tags="objectFactory"/>
+```
+
+### 4. TypeScript Table 代码生成
+
+自动生成类型安全的 table 加载器，取代 Luban codebuild。
+
+**配置**：
+```toml
+[output]
+path = "configs/defines/generated.xml"
+table_output_path = "out/tables"   # 启用 TS 代码生成
+```
+
+**生成的文件结构**：
+```
+out/tables/
+├── creators/           # 每个 bean 的 creator 函数
+│   ├── monster.ts
+│   └── ...
+├── tables/             # 每个 table 的加载器
+│   ├── monster.ts
+│   └── ...
+├── registry.ts         # bean 注册表
+└── index.ts            # AllTables 入口
+```
+
+**使用示例**：
+```typescript
+import { createAllTables } from "./out/tables";
+
+const tables = createAllTables((file) => loadJson(file));
+const monster = tables.MonsterTable.get(1001);
+```
+
+### 5. JSDoc 注释
 - 类注释 → `<bean comment="...">`
 - `@param` 标签 → `<var comment="...">`
 - `@alias` 标签 → `<bean alias="...">` 或 `<enum alias="...">`
   - 支持两种格式：`@alias:别名` 或 `@alias="别名"`
 - `@ignore` 标签 → 不导出该类/接口/枚举
+- `@flags="true"` → 位标志枚举
 
-**@ignore 示例**：
-```typescript
-/**
- * 内部使用的辅助类，不导出到 Luban
- * @ignore
- */
-export class InternalHelper {
-    public helperData: string;
-}
+### 6. 配置选项
 
-/**
- * 内部接口，不导出
- * @ignore
- */
-export interface InternalInterface {
-    internalField: number;
-}
-
-/**
- * 调试用枚举，不导出
- * @ignore
- */
-export enum DebugLevel {
-    Off = 0,
-    Error = 1,
-}
-```
-
-### 4. 配置选项
 ```toml
+[project]
+tsconfig = "tsconfig.json"
+
 [output]
 path = "output.xml"
-module_name = ""  # 默认为空字符串
+module_name = ""                    # 默认为空字符串
+enum_path = "output/enums.xml"      # 枚举输出路径
+bean_types_path = "output/types.xml" # bean 类型枚举
+table_output_path = "out/tables"    # TypeScript table 代码输出
 
 [[sources]]
-type = "file"             # 单个文件
+type = "file"
 path = "src/types.ts"
-module_name = "types"     # 可选：覆盖默认 module_name
+module_name = "types"
 
 [[sources]]
-type = "files"            # 多个文件
+type = "files"
 paths = ["src/a.ts", "src/b.ts"]
 output_path = "output/ab.xml"
-module_name = ""          # 允许空字符串
 
 [[sources]]
-type = "directory"        # 目录扫描
+type = "directory"
 path = "src/triggers"
 scan_options = { include_dts = true }
 
-[[parent_mappings]]
-pattern = ".*Trigger$"    # 正则匹配类名
-parent = "TsTriggerClass"
+[[sources]]
+type = "glob"
+pattern = "src/**/*Trigger.ts"
+module_name = "triggers"
+
+# Table 映射配置
+[[table_mappings]]
+pattern = "Tb.*"                    # 正则匹配类名
+input = "configs/{name}.xlsx"       # {name} = 类名
+output = "{name}"
+
+[[table_mappings]]
+pattern = "TbItem"                  # 精确匹配优先
+input = "items/item_data.xlsx"
+output = "item"
+
+# 引用其他配置
+[[ref_configs]]
+path = "../shared-pkg/ts-luban.config.toml"
+
+# 自定义类型映射
+[type_mappings]
+Vector3 = "Vector3"
+Entity = "long"
 ```
 
-### 5. Source 类型
+### 7. Source 类型
 - `file`: 单个文件
 - `files`: 多个文件（共享 output_path 和 module_name）
 - `directory`: 目录扫描
 - `glob`: Glob 模式匹配（支持 `*`, `**`, `?`, `[abc]`）
 - `registration`: 注册文件（未完全实现）
 
-### 6. Glob 模式配置
-```toml
-[[sources]]
-type = "glob"
-pattern = "src/**/*Trigger.ts"    # 匹配所有 Trigger 文件
-output_path = "output/triggers.xml"
-module_name = "triggers"
-```
-
-### 7. Per-Source 配置
-每个 source 可独立配置：
-- `output_path`: 覆盖默认输出路径
-- `module_name`: 覆盖默认 module name（允许空字符串）
-
 ### 8. Enum 导出
-TypeScript 枚举会被转换为 Luban XML `<enum>` 元素：
 
 **字符串枚举**（使用 `tags="string"`）：
 ```typescript
 export enum ItemType {
-    Role = "role",        // → value="1"
-    Consumable = "consumable"  // → value="2"
+    Role = "role",
+    Consumable = "consumable"
 }
 ```
 生成：
@@ -164,11 +301,11 @@ export enum ItemType {
 </enum>
 ```
 
-**数值枚举**（无 tags 属性）：
+**数值枚举**：
 ```typescript
 export enum SkillStyle {
-    Attack = 1,   // → value="1"
-    Defense = 2   // → value="2"
+    Attack = 1,
+    Defense = 2
 }
 ```
 生成：
@@ -179,91 +316,173 @@ export enum SkillStyle {
 </enum>
 ```
 
-**位标志枚举**（使用 `@flags="true"` 和 `@alias`）：
+**位标志枚举**（使用 `@flags="true"`）：
 ```typescript
 /**
- * 单位权限标志
  * @flags="true"
  * @alias:权限
  */
 export enum UnitFlag {
-    /**
-     * 可以移动
-     * @alias="移动"
-     */
+    /** @alias="移动" */
     CAN_MOVE = 1 << 0,
-    /**
-     * 可以攻击
-     * @alias="攻击"
-     */
+    /** @alias="攻击" */
     CAN_ATTACK = 1 << 1,
-    /** 组合标志 */
     BASICS = CAN_MOVE | CAN_ATTACK,
 }
 ```
 生成：
 ```xml
-<enum name="UnitFlag" alias="权限" flags="true" comment="单位权限标志">
-    <var name="CAN_MOVE" alias="移动" value="1" comment="可以移动"/>
-    <var name="CAN_ATTACK" alias="攻击" value="2" comment="可以攻击"/>
-    <var name="BASICS" alias="basics" value="3" comment="组合标志"/>
+<enum name="UnitFlag" alias="权限" flags="true">
+    <var name="CAN_MOVE" alias="移动" value="1"/>
+    <var name="CAN_ATTACK" alias="攻击" value="2"/>
+    <var name="BASICS" alias="basics" value="3"/>
 </enum>
 ```
 
 **规则**：
-- 枚举 `alias` = `@alias:xxx` 或 `@alias="xxx"` 标签值（可选）
-- 成员 `alias` = `@alias="xxx"` 标签值，或小写的 name
-- `@flags="true"` 标签 → 生成 `flags="true"` 属性
-- 支持位运算表达式：`1 << N`、`A | B`、`A & B` 等
+- 支持位运算表达式：`1 << N`、`A | B`、`A & B`
 - 支持枚举成员引用：`BASICS = CAN_MOVE | CAN_ATTACK`
-- 字符串枚举的 value 从 1 自动递增（原始字符串值被忽略）
+- 字符串枚举 value 从 1 自动递增
 - 数值枚举使用原始数值
-- 枚举输出到独立文件，默认为 `{output}_enums.xml`
 
-**配置**：
-```toml
-[output]
-path = "output/generated.xml"
-enum_path = "output/enums.xml"  # 可选：自定义枚举输出路径
-```
+### 9. Bean 类型枚举导出
 
-### 9. Bean 类型枚举导出（按 parent 分组）
-将所有 bean 按 parent 分组导出为枚举，用于类型安全的 bean 引用：
+将所有 bean 按 parent 分组导出为枚举：
 
 ```toml
 [output]
-path = "output/generated.xml"
-module_name = "triggers"
-bean_types_path = "output/bean_types.xml"  # 使用全局 module_name
+bean_types_path = "output/bean_types.xml"
 ```
 
-**规则**：
-- 每个 parent 生成一个独立的枚举，名称为 `{parent}Enum`
-- `value` = bean 名称（字符串）
-- `alias` 仅当 bean 有 `@alias` 标签时生成
-- `comment` = bean 的注释
-- 没有 parent 的 bean 不会生成枚举
-
-**示例**：
-```typescript
-/**
- * 伤害触发器
- * @alias:伤害
- */
-export class DamageTrigger { ... }
-
-/** 治疗触发器 */
-export class HealTrigger { ... }
-```
-
-生成（假设 parent 都是 `TriggerBase`）：
+生成：
 ```xml
-<module name="triggers" comment="自动生成的 bean 类型枚举">
-    <enum name="TriggerBaseEnum" comment="TriggerBase 的子类型">
-        <var name="DamageTrigger" alias="伤害" value="DamageTrigger" comment="伤害触发器"/>
-        <var name="HealTrigger" value="HealTrigger" comment="治疗触发器"/>
-    </enum>
-</module>
+<enum name="TriggerBaseEnum" comment="TriggerBase 的子类型">
+    <var name="DamageTrigger" alias="伤害" value="DamageTrigger"/>
+    <var name="HealTrigger" value="HealTrigger"/>
+</enum>
+```
+
+## 数据结构
+
+### FieldValidators
+```rust
+pub struct FieldValidators {
+    pub ref_target: Option<String>,      // @Ref 目标类
+    pub range: Option<(f64, f64)>,       // @Range 范围
+    pub required: bool,                  // @Required
+    pub size: Option<SizeConstraint>,    // @Size
+    pub set_values: Vec<String>,         // @Set 值集合
+    pub index_field: Option<String>,     // @Index 字段
+    pub nominal: bool,                   // @Nominal
+}
+```
+
+### LubanTableConfig
+```rust
+pub struct LubanTableConfig {
+    pub mode: String,           // map | list | one | singleton
+    pub index: String,          // 索引字段
+    pub group: Option<String>,  // 分组
+    pub tags: Option<String>,   // 标签
+}
+```
+
+### FieldInfo
+```rust
+pub struct FieldInfo {
+    pub name: String,
+    pub field_type: String,
+    pub comment: Option<String>,
+    pub is_optional: bool,
+    pub validators: FieldValidators,
+    pub is_object_factory: bool,
+    pub factory_inner_type: Option<String>,
+    pub original_type: String,
+}
+```
+
+## luban-ts/ 项目开发
+
+`luban-ts/` 是 roblox-ts 示例项目，用于测试和验证 ts-to-luban 工具。
+
+### 项目结构
+
+```
+luban-ts/
+├── src/
+│   ├── index.ts              # 装饰器导出
+│   ├── __examples__/          # 示例配置类
+│   ├── __tests__/             # 测试
+│   └── ts-tables/             # 生成的 table 加载器
+├── configs/                   # Luban 数据
+│   ├── defines/               # 生成的 XML
+│   ├── datas/                 # 配置数据 数据
+│   ├── tables/                # Luban 输出
+│   └── jsonConfigs/           # 配置的 JSON 输出
+└── luban.config.toml
+```
+
+### 开发工作流程
+
+```bash
+# 1. 安装依赖
+cd luban-ts && npm install
+
+# 2. 生成 XML 和 TS table 加载器 和 配置
+npm run config:build
+
+# 3. 编译 TypeScript 到 Lua
+npm run build
+
+# 4. 运行测试
+npm test
+```
+
+### 配置类示例
+
+```typescript
+// src/__examples__/my-config.ts
+import { LubanTable, Range, Required } from "../index";
+
+@LubanTable({ mode: "map", index: "id" })
+export class MyConfig {
+    public id: number;
+    @Required() public name: string;
+    @Range(1, 100) public value: number;
+}
+```
+
+### 测试示例
+
+```typescript
+// src/__tests__/my-config.spec.ts
+import { createAllTables } from "../ts-tables";
+
+export = () => {
+    describe("MyConfig", () => {
+        it("should load config", () => {
+            const tables = createAllTables((file) => {
+                if (file === "my-config") {
+                    return { "1": { id: 1, name: "Test", value: 50 } };
+                }
+                return {};
+            });
+            const config = tables.MyConfigTable.get(1);
+            expect(config!.name).to.equal("Test");
+        });
+    });
+};
+```
+
+### 可用命令
+
+```bash
+cd luban-ts
+
+npm run build      # 编译 TypeScript
+npm run watch      # 监听模式
+npm test           # 运行测试
+npm run config:build   # 重新生成 XML 和 TS 代码 和配置
 ```
 
 ## 开发注意事项
@@ -271,12 +490,13 @@ export class HealTrigger { ... }
 - SWC 的 `TsUnionType` 在新版本中变为 `TsUnionOrIntersectionType::TsUnionType`
 - `TsParser` 包含 `Lrc<SourceMap>` 不是 `Sync`，需要在并行闭包中创建新实例
 - 注释附加在 `export` 关键字位置，需要使用 `export.span.lo` 获取
-- `ClassInfo.extends` 字段保留但不再用于 parent 解析
+- 装饰器解析使用两遍扫描：第一遍收集 @LubanTable 类，第二遍解析 @Ref 引用
+- TypeScript 代码生成使用 kebab-case 文件名
 
 ## 发布流程
 
 ```bash
-# 1. 更新版本号 (Cargo.toml 和 package.json)
+# 1. 更新版本号 (Cargo.toml 和 luban-ts/package.json)
 # 2. 提交并打 tag
 git add . && git commit -m "release: vX.Y.Z"
 git tag vX.Y.Z && git push && git push --tags

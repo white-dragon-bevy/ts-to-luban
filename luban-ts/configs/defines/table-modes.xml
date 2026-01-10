@@ -22,7 +22,7 @@
 
     <!-- 数据表配置 -->
     <table name="LeaderboardEntryTable" value="LeaderboardEntry" mode="list" index="rank" input="*@../datas/leaderboardentry/"/>
-    <table name="GameConfigTable" value="GameConfig" mode="one" index="" input="*@../datas/gameconfig/"/>
-    <table name="ServerSettingsTable" value="ServerSettings" mode="singleton" index="" input="*@../datas/serversettings/"/>
+    <table name="GameConfigTable" value="GameConfig" mode="one" index="" input="../datas/gameconfig/"/>
+    <table name="ServerSettingsTable" value="ServerSettings" mode="singleton" index="" input="../datas/serversettings/"/>
 
 </module>

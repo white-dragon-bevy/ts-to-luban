@@ -15,7 +15,7 @@ fn test_end_to_end_generation() {
     let output_path = temp.path().join("output.xml");
     let cache_path = temp.path().join(".cache.json");
 
-    // Create config
+    // Create config (no more base_class or parent_mappings)
     let config = format!(
         r#"
 [project]
@@ -28,13 +28,6 @@ cache_file = "{}"
 [[sources]]
 type = "directory"
 path = "{}"
-
-[[base_class_mappings]]
-interface = "EntityTrigger"
-maps_to = "TsTriggerClass"
-
-[defaults]
-base_class = "TsClass"
 "#,
         output_path.display().to_string().replace('\\', "/"),
         cache_path.display().to_string().replace('\\', "/"),
@@ -66,16 +59,16 @@ base_class = "TsClass"
     // Verify output content
     let output = fs::read_to_string(&output_path).unwrap();
 
-    // Check for SimpleClass
+    // Check for SimpleClass (no parent since no extends)
     assert!(
-        output.contains(r#"<bean name="SimpleClass" parent="TsClass">"#),
+        output.contains(r#"<bean name="SimpleClass">"#),
         "Missing SimpleClass bean"
     );
 
-    // Check for DamageTrigger with TsClass parent (all classes use default parent)
+    // Check for DamageTrigger (no parent since no extends in fixture)
     assert!(
-        output.contains(r#"<bean name="DamageTrigger" parent="TsClass">"#),
-        "Missing DamageTrigger bean with correct parent"
+        output.contains(r#"<bean name="DamageTrigger">"#),
+        "Missing DamageTrigger bean"
     );
 
     // Check for list type
@@ -116,9 +109,6 @@ cache_file = "{}"
 [[sources]]
 type = "directory"
 path = "{}"
-
-[defaults]
-base_class = "TsClass"
 "#,
         output_path.display().to_string().replace('\\', "/"),
         cache_path.display().to_string().replace('\\', "/"),

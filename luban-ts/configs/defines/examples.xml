@@ -4,7 +4,7 @@
     <bean name="Item" alias="道具" comment="道具配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
-        <var name="category" type="string#set=weapon;armor;consumable;material"/>
+        <var name="category" type="string#set=weapon,armor,consumable,material"/>
         <var name="stackLimit" type="double#range=[1,999]"/>
     </bean>
 

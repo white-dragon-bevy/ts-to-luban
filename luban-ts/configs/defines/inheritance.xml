@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="inheritance" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="BaseUnit" comment="基础单位">
+        <var name="id" type="double"/>
+        <var name="name" type="string!"/>
+    </bean>
+
+    <bean name="CharacterUnit" parent="BaseUnit" comment="角色单位 - 继承 BaseUnit">
+        <var name="level" type="double"/>
+        <var name="hp" type="double"/>
+    </bean>
+
+    <bean name="PlayerUnit" parent="CharacterUnit" comment="玩家单位 - 继承 CharacterUnit">
+        <var name="experience" type="double"/>
+        <var name="accountId" type="string!"/>
+    </bean>
+
+    <bean name="NPCUnit" parent="CharacterUnit" comment="NPC单位 - 继承 CharacterUnit">
+        <var name="dialogue" type="list,string"/>
+    </bean>
+
+    <bean name="StandaloneUnit" comment="独立单位 - 无继承">
+        <var name="data" type="string"/>
+    </bean>
+
+</module>

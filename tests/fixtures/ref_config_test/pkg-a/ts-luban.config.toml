@@ -8,9 +8,5 @@ path = "output.xml"
 type = "directory"
 path = "local-src"
 
-[[parent_mappings]]
-pattern = ".*Trigger$"
-parent = "TriggerBase"
-
 [[ref_configs]]
 path = "../pkg-b/ts-luban.config.toml"

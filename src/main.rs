@@ -8,18 +8,18 @@ mod config;
 mod tsconfig;
 mod parser;
 mod type_mapper;
-mod base_class;
 mod generator;
 mod cache;
 mod scanner;
+mod ts_generator;
 
 use config::{Config, SourceConfig};
 use tsconfig::TsConfig;
 use parser::TsParser;
 use type_mapper::TypeMapper;
-use base_class::BaseClassResolver;
 use generator::{XmlGenerator, generate_enum_xml, generate_bean_type_enums_xml};
 use cache::Cache;
+use ts_generator::TsCodeGenerator;
 
 mod table_registry;
 use table_registry::TableRegistry;
@@ -58,14 +58,13 @@ fn main() -> Result<()> {
 
     let project_root = cli.config.parent().unwrap_or_else(|| std::path::Path::new("."));
 
-    // Load tsconfig (for future path resolution support)
+    // Load tsconfig (for path resolution support)
     let tsconfig_path = project_root.join(&config.project.tsconfig);
-    let _tsconfig = TsConfig::load(&tsconfig_path)
+    let tsconfig = TsConfig::load(&tsconfig_path)
         .with_context(|| format!("Failed to load tsconfig from {:?}", tsconfig_path))?;
 
     // Initialize components
     let type_mapper = TypeMapper::new(&config.type_mappings);
-    let base_resolver = BaseClassResolver::new(&config.defaults.base_class, &config.parent_mappings);
 
     // Load cache
     let cache_path = project_root.join(&config.output.cache_file);
@@ -253,7 +252,7 @@ fn main() -> Result<()> {
     // Generate XML - group by (output_path, module_name)
     println!("\n[4/4] Generating XML...");
     let table_mapping_resolver = TableMappingResolver::new(&config.table_mappings);
-    let xml_generator = XmlGenerator::new(&base_resolver, &type_mapper, &table_registry, &table_mapping_resolver);
+    let xml_generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
 
     // Group classes by (output_path, module_name)
     let default_output = config.output.path.clone();
@@ -344,9 +343,9 @@ fn main() -> Result<()> {
 
     // Generate bean type enums XML if configured (grouped by parent)
     if let Some(bean_types_path) = &config.output.bean_types_path {
-        // Collect beans with their resolved parents, aliases, and comments
+        // Collect beans with their extends (parent), aliases, and comments
         let beans_with_parents: Vec<(&str, String, Option<&str>, Option<&str>)> = final_classes.iter()
-            .map(|c| (c.name.as_str(), base_resolver.resolve(c), c.alias.as_deref(), c.comment.as_deref()))
+            .map(|c| (c.name.as_str(), c.extends.clone().unwrap_or_default(), c.alias.as_deref(), c.comment.as_deref()))
             .collect();
         let beans_refs: Vec<(&str, &str, Option<&str>, Option<&str>)> = beans_with_parents.iter()
             .map(|(name, parent, alias, comment)| (*name, parent.as_str(), *alias, *comment))
@@ -369,6 +368,21 @@ fn main() -> Result<()> {
             std::fs::write(&resolved_path, &xml_output)?;
             println!("  Written bean type enums to {:?}", resolved_path);
         }
+    }
+
+    // Generate TypeScript table code if configured
+    if let Some(table_output_path) = &config.output.table_output_path {
+        println!("\n[5/5] Generating TypeScript table code...");
+
+        let resolved_path = project_root.join(table_output_path);
+        let ts_generator = TsCodeGenerator::new(
+            resolved_path.clone(),
+            final_classes.clone(),
+            &tsconfig,
+        );
+
+        ts_generator.generate()?;
+        println!("  Written TypeScript tables to {:?}", resolved_path);
     }
 
     // Save cache

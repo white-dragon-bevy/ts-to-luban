@@ -3,13 +3,18 @@
   "version": "0.1.0",
   "main": "out/init.lua",
   "types": "out/index.d.ts",
-  "files": ["out"],
+	"type": "module",
+  "files": [
+    "out"
+  ],
   "scripts": {
-    "build": "rbxtsc",
-    "watch": "rbxtsc -w",
+    "build": "rbxtsc --type game",
+		"test": "npx test-cloud-testez --roots ReplicatedStorage/TS",
+    "watch": "rbxtsc -w --type game",
     "ts-luban": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml -f",
     "luban": "dotnet node_modules/@rbxts/luban/src/Luban/bin/Release/net8.0/Luban.dll",
-    "config:codebuild": "npm run ts-luban && npm run luban -- -t all -c roblox-ts-json --conf configs/luban.conf -x outputCodeDir=out/configs"
+    "luban2": "dotnet D:/projects/rbxts/rbxts-luban/src/Luban/bin/Release/net8.0/Luban.dll",
+    "config:build": "npm run ts-luban && npm run luban2 -- -t all -d roblox-ts-json --conf configs/luban.conf -x outputDataDir=configs/jsonConfigs -x compact=1"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -20,5 +25,8 @@
   },
   "peerDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0"
+  },
+  "dependencies": {
+    "@rbxts/test-cloud-testez": "^0.5.11"
   }
 }

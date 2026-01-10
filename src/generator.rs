@@ -1,32 +1,22 @@
 use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators};
 use crate::parser::field_info::SizeConstraint;
-use crate::base_class::BaseClassResolver;
 use crate::type_mapper::TypeMapper;
 use crate::table_registry::TableRegistry;
 use crate::table_mapping::TableMappingResolver;
 
 pub struct XmlGenerator<'a> {
-    base_resolver: &'a BaseClassResolver<'a>,
     type_mapper: &'a TypeMapper,
     table_registry: &'a TableRegistry,
     table_mapping_resolver: &'a TableMappingResolver,
-    /// Current module name for generating relative refs
-    current_module: String,
 }
 
 impl<'a> XmlGenerator<'a> {
     pub fn new(
-        base_resolver: &'a BaseClassResolver<'a>,
         type_mapper: &'a TypeMapper,
         table_registry: &'a TableRegistry,
         table_mapping_resolver: &'a TableMappingResolver,
     ) -> Self {
-        Self { base_resolver, type_mapper, table_registry, table_mapping_resolver, current_module: String::new() }
-    }
-
-    /// Set current module name for ref resolution
-    pub fn with_module(&mut self, module: &str) {
-        self.current_module = module.to_string();
+        Self { type_mapper, table_registry, table_mapping_resolver }
     }
 
     pub fn generate(&self, classes: &[ClassInfo], module_name: &str) -> String {
@@ -96,7 +86,7 @@ impl<'a> XmlGenerator<'a> {
     }
 
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo) {
-        let parent = self.base_resolver.resolve(class);
+        let parent = class.extends.clone().unwrap_or_default();
 
         let alias_attr = class.alias.as_ref()
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
@@ -194,7 +184,7 @@ impl<'a> XmlGenerator<'a> {
 
         // Handle set
         if !validators.set_values.is_empty() {
-            let set_str = validators.set_values.join(";");
+            let set_str = validators.set_values.join(",");
             validator_parts.push(format!("set={}", set_str));
         }
 
@@ -426,12 +416,11 @@ pub fn generate_table(
 }
 
 #[cfg(test)]
-fn generate_xml(classes: &[ClassInfo], default_base: &str) -> String {
-    let base_resolver = BaseClassResolver::new(default_base, &[]);
+fn generate_xml(classes: &[ClassInfo]) -> String {
     let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
     let table_registry = TableRegistry::new();
     let table_mapping_resolver = TableMappingResolver::new(&[]);
-    let generator = XmlGenerator::new(&base_resolver, &type_mapper, &table_registry, &table_mapping_resolver);
+    let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
     generator.generate(classes, "")
 }
 
@@ -446,6 +435,9 @@ mod tests {
             comment: None,
             is_optional: optional,
             validators: FieldValidators::default(),
+            is_object_factory: false,
+            factory_inner_type: None,
+            original_type: field_type.to_string(),
         }
     }
 
@@ -462,10 +454,13 @@ mod tests {
                     comment: Some("Name field".to_string()),
                     is_optional: false,
                     validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    original_type: "string".to_string(),
                 },
             ],
             implements: vec![],
-            extends: None,
+            extends: Some("BaseClass".to_string()),
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
             is_interface: false,
@@ -475,8 +470,8 @@ mod tests {
             luban_table: None,
         };
 
-        let xml = generate_xml(&[class], "TsClass");
-        assert!(xml.contains(r#"<bean name="MyClass" parent="TsClass" comment="Test class">"#));
+        let xml = generate_xml(&[class]);
+        assert!(xml.contains(r#"<bean name="MyClass" parent="BaseClass" comment="Test class">"#));
         assert!(xml.contains(r#"<var name="name" type="string" comment="Name field"/>"#));
     }
 
@@ -498,7 +493,7 @@ mod tests {
             luban_table: None,
         };
 
-        let xml = generate_xml(&[class], "TsClass");
+        let xml = generate_xml(&[class]);
         assert!(xml.contains(r#"type="string?""#));
     }
 
@@ -520,16 +515,16 @@ mod tests {
             luban_table: None,
         };
 
-        let xml = generate_xml(&[class], "TsClass");
+        let xml = generate_xml(&[class]);
         // List types should NOT have ? suffix even when optional
         assert!(xml.contains(r#"type="list,string""#));
         assert!(!xml.contains(r#"type="list,string?""#));
     }
 
     #[test]
-    fn test_interface_no_extends_no_parent() {
+    fn test_no_extends_no_parent() {
         let class = ClassInfo {
-            name: "MyInterface".to_string(),
+            name: "MyClass".to_string(),
             comment: None,
             alias: None,
             fields: vec![make_field("value", "int", false)],
@@ -537,38 +532,38 @@ mod tests {
             extends: None,
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
-            is_interface: true,
+            is_interface: false,
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
         };
 
-        let xml = generate_xml(&[class], "TsClass");
-        assert!(xml.contains(r#"<bean name="MyInterface">"#));
+        let xml = generate_xml(&[class]);
+        assert!(xml.contains(r#"<bean name="MyClass">"#));
         assert!(!xml.contains("parent="));
     }
 
     #[test]
-    fn test_interface_with_extends_has_parent() {
+    fn test_with_extends_has_parent() {
         let class = ClassInfo {
-            name: "ChildInterface".to_string(),
+            name: "ChildClass".to_string(),
             comment: None,
             alias: None,
             fields: vec![make_field("value", "int", false)],
             implements: vec![],
-            extends: Some("ParentInterface".to_string()),
+            extends: Some("ParentClass".to_string()),
             source_file: "test.ts".to_string(),
             file_hash: "abc123".to_string(),
-            is_interface: true,
+            is_interface: false,
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
         };
 
-        let xml = generate_xml(&[class], "TsClass");
-        assert!(xml.contains(r#"<bean name="ChildInterface" parent="ParentInterface">"#));
+        let xml = generate_xml(&[class]);
+        assert!(xml.contains(r#"<bean name="ChildClass" parent="ParentClass">"#));
     }
 
     #[test]

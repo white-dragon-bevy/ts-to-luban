@@ -12,8 +12,6 @@ pub struct Config {
     #[serde(default)]
     pub type_mappings: std::collections::HashMap<String, String>,
     #[serde(default)]
-    pub parent_mappings: Vec<ParentMapping>,
-    #[serde(default)]
     pub ref_configs: Vec<RefConfig>,
     #[serde(default)]
     pub table_mappings: Vec<TableMapping>,
@@ -37,6 +35,9 @@ pub struct OutputConfig {
     /// Path to output bean type enums XML file (grouped by parent)
     #[serde(default)]
     pub bean_types_path: Option<PathBuf>,
+    /// Path to output TypeScript table code
+    #[serde(default)]
+    pub table_output_path: Option<PathBuf>,
 }
 
 fn default_cache_file() -> PathBuf {
@@ -81,8 +82,6 @@ pub enum SourceConfig {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct DefaultsConfig {
-    #[serde(default = "default_base_class")]
-    pub base_class: String,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -91,16 +90,6 @@ pub struct ScanOptions {
     pub include_dts: bool,
     #[serde(default)]
     pub include_node_modules: bool,
-}
-
-fn default_base_class() -> String {
-    "TsClass".to_string()
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ParentMapping {
-    pub pattern: String,
-    pub parent: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -123,19 +112,11 @@ impl Config {
     }
 
     /// Load config and merge referenced configs
-    /// Root config takes priority: if a pattern exists in root, ref's pattern is ignored
     pub fn load_with_refs(path: &std::path::Path) -> anyhow::Result<Self> {
         let mut config = Self::load(path)?;
         let config_dir = path.parent().unwrap_or(std::path::Path::new("."));
 
-        // Track existing patterns from root config for priority
-        let existing_patterns: std::collections::HashSet<_> = config
-            .parent_mappings
-            .iter()
-            .map(|m| m.pattern.clone())
-            .collect();
-
-        // Collect sources and parent_mappings from referenced configs
+        // Collect sources from referenced configs
         for ref_config in &config.ref_configs {
             let ref_path = config_dir.join(&ref_config.path);
             let ref_path = ref_path.canonicalize().unwrap_or(ref_path.clone());
@@ -149,13 +130,6 @@ impl Config {
             for source in referenced.sources {
                 let resolved_source = Self::resolve_source_path(source, ref_dir);
                 config.sources.push(resolved_source);
-            }
-
-            // Merge parent_mappings (only add if pattern doesn't exist in root)
-            for mapping in referenced.parent_mappings {
-                if !existing_patterns.contains(&mapping.pattern) {
-                    config.parent_mappings.push(mapping);
-                }
             }
         }
 
@@ -246,15 +220,11 @@ cache_file = ".luban-cache.json"
 [[sources]]
 type = "directory"
 path = "src/triggers"
-
-[defaults]
-base_class = "TsClass"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.project.tsconfig, PathBuf::from("tsconfig.json"));
         assert_eq!(config.output.path, PathBuf::from("output.xml"));
         assert_eq!(config.sources.len(), 1);
-        assert_eq!(config.defaults.base_class, "TsClass");
     }
 
     #[test]
@@ -313,40 +283,6 @@ path = "../another-pkg/ts-luban.config.toml"
             }
         });
         assert!(has_pkg_b_source, "Should have pkg-b source with resolved path");
-    }
-
-    #[test]
-    fn test_load_with_refs_merges_parent_mappings() {
-        let config_path = PathBuf::from("tests/fixtures/ref_config_test/pkg-a/ts-luban.config.toml");
-        let config = Config::load_with_refs(&config_path).unwrap();
-
-        // Should have 2 parent mappings: Trigger from pkg-a and Handler from pkg-b
-        assert_eq!(config.parent_mappings.len(), 2);
-
-        let has_trigger = config.parent_mappings.iter().any(|m| m.pattern.contains("Trigger"));
-        let has_handler = config.parent_mappings.iter().any(|m| m.pattern.contains("Handler"));
-
-        assert!(has_trigger, "Should have Trigger mapping from pkg-a");
-        assert!(has_handler, "Should have Handler mapping from pkg-b");
-    }
-
-    #[test]
-    fn test_load_with_refs_root_config_priority() {
-        let config_path = PathBuf::from("tests/fixtures/priority_test/root/ts-luban.config.toml");
-        let config = Config::load_with_refs(&config_path).unwrap();
-
-        // Both configs have ".*Trigger$" pattern, but only root's should be kept
-        let trigger_mappings: Vec<_> = config
-            .parent_mappings
-            .iter()
-            .filter(|m| m.pattern == ".*Trigger$")
-            .collect();
-
-        assert_eq!(trigger_mappings.len(), 1, "Should have only one Trigger mapping");
-        assert_eq!(
-            trigger_mappings[0].parent, "RootTriggerBase",
-            "Root config should take priority over ref config"
-        );
     }
 
     #[test]
@@ -545,6 +481,20 @@ output = "{name}"
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.table_mappings.len(), 1);
         assert_eq!(config.table_mappings[0].pattern, "Tb.*");
+    }
+
+    #[test]
+    fn test_parse_table_output_path() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+table_output_path = "out/tables"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.output.table_output_path, Some(PathBuf::from("out/tables")));
     }
 
 }

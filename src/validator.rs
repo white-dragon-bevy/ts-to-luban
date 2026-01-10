@@ -36,7 +36,7 @@ impl<'a> ValidatorGenerator<'a> {
 
         // Handle set
         if !validators.set_values.is_empty() {
-            let set_str = validators.set_values.join(";");
+            let set_str = validators.set_values.join(",");
             result.push_str(&format!("#set={}", set_str));
         }
 

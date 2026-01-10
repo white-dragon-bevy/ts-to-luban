@@ -3,8 +3,10 @@
 /bin/luban-gen.exe
 .luban-cache.json
 !tests/fixtures/*.xml
-
-
+.test-result/
+ts-tables/
+jsonConfigs/
+.env
 # IDE
 .idea/
 .vscode/
@@ -12,3 +14,4 @@
 node_modules/
 output/
 out/
+*.rbxl

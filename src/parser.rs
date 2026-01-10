@@ -15,6 +15,14 @@ use swc_common::{sync::Lrc, SourceMap, FileName, BytePos, comments::{Comments, S
 use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax};
 use swc_ecma_ast::*;
 
+/// Extended type info for ObjectFactory detection
+struct TypeInfo {
+    field_type: String,
+    original_type: String,
+    is_object_factory: bool,
+    factory_inner_type: Option<String>,
+}
+
 pub struct TsParser {
     source_map: Lrc<SourceMap>,
 }
@@ -556,19 +564,27 @@ impl TsParser {
             return None;
         }
 
-        let field_type = type_ann
-            .map(|ann| self.convert_type_with_params(&ann.type_ann, type_params))
-            .unwrap_or_else(|| "string".to_string());
+        let type_info = type_ann
+            .map(|ann| self.convert_type_extended(&ann.type_ann, type_params))
+            .unwrap_or_else(|| TypeInfo {
+                field_type: "string".to_string(),
+                original_type: "string".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            });
 
         // Parse field decorators from TsParamProp
         let validators = parse_field_decorators(&prop.decorators);
 
         Some(FieldInfo {
             name,
-            field_type,
+            field_type: type_info.field_type,
             comment: None,
             is_optional,
             validators,
+            is_object_factory: type_info.is_object_factory,
+            factory_inner_type: type_info.factory_inner_type,
+            original_type: type_info.original_type,
         })
     }
 
@@ -594,11 +610,16 @@ impl TsParser {
             return None;
         }
 
-        let field_type = prop
+        let type_info = prop
             .type_ann
             .as_ref()
-            .map(|ann| self.convert_type_with_params(&ann.type_ann, type_params))
-            .unwrap_or_else(|| "string".to_string());
+            .map(|ann| self.convert_type_extended(&ann.type_ann, type_params))
+            .unwrap_or_else(|| TypeInfo {
+                field_type: "string".to_string(),
+                original_type: "string".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            });
 
         // Extract field comment
         let comment = self.get_leading_comment(prop.span.lo, comments);
@@ -608,10 +629,13 @@ impl TsParser {
 
         Some(FieldInfo {
             name,
-            field_type,
+            field_type: type_info.field_type,
             comment,
             is_optional: prop.is_optional,
             validators,
+            is_object_factory: type_info.is_object_factory,
+            factory_inner_type: type_info.factory_inner_type,
+            original_type: type_info.original_type,
         })
     }
 
@@ -626,27 +650,87 @@ impl TsParser {
             _ => return None,
         };
 
-        let field_type = prop
+        let type_info = prop
             .type_ann
             .as_ref()
-            .map(|ann| self.convert_type_with_params(&ann.type_ann, type_params))
-            .unwrap_or_else(|| "string".to_string());
+            .map(|ann| self.convert_type_extended(&ann.type_ann, type_params))
+            .unwrap_or_else(|| TypeInfo {
+                field_type: "string".to_string(),
+                original_type: "string".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            });
 
         // Extract field comment
         let comment = self.get_leading_comment(prop.span.lo, comments);
 
         Some(FieldInfo {
             name,
-            field_type,
+            field_type: type_info.field_type,
             comment,
             is_optional: prop.optional,
             validators: FieldValidators::default(),
+            is_object_factory: type_info.is_object_factory,
+            factory_inner_type: type_info.factory_inner_type,
+            original_type: type_info.original_type,
         })
     }
 
     #[allow(dead_code)]
     fn convert_type(&self, ts_type: &TsType) -> String {
         self.convert_type_with_params(ts_type, &HashMap::new())
+    }
+
+    /// Convert type with ObjectFactory detection
+    fn convert_type_extended(&self, ts_type: &TsType, type_params: &HashMap<String, String>) -> TypeInfo {
+        let original_type = self.convert_type_with_params(ts_type, type_params);
+
+        // Check for ObjectFactory<T> pattern
+        if let TsType::TsTypeRef(type_ref) = ts_type {
+            if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                if ident.sym.to_string() == "ObjectFactory" {
+                    if let Some(params) = &type_ref.type_params {
+                        if let Some(first) = params.params.first() {
+                            let inner_type = self.convert_type_with_params(first, type_params);
+                            return TypeInfo {
+                                field_type: inner_type.clone(),
+                                original_type,
+                                is_object_factory: true,
+                                factory_inner_type: Some(inner_type),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for ObjectFactory<T>[] pattern (array of factories)
+        if let TsType::TsArrayType(arr) = ts_type {
+            if let TsType::TsTypeRef(type_ref) = &*arr.elem_type {
+                if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                    if ident.sym.to_string() == "ObjectFactory" {
+                        if let Some(params) = &type_ref.type_params {
+                            if let Some(first) = params.params.first() {
+                                let inner_type = self.convert_type_with_params(first, type_params);
+                                return TypeInfo {
+                                    field_type: format!("list,{}", inner_type),
+                                    original_type,
+                                    is_object_factory: true,
+                                    factory_inner_type: Some(inner_type),
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        TypeInfo {
+            field_type: original_type.clone(),
+            original_type,
+            is_object_factory: false,
+            factory_inner_type: None,
+        }
     }
 
     fn convert_type_with_params(&self, ts_type: &TsType, type_params: &HashMap<String, String>) -> String {
@@ -1317,5 +1401,43 @@ export enum ExportedEnum {
         // Only ExportedEnum should be present
         assert_eq!(enums.len(), 1);
         assert_eq!(enums[0].name, "ExportedEnum");
+    }
+
+    #[test]
+    fn test_parse_object_factory_field() {
+        let ts_code = r#"
+export class TestClass {
+    public factory: ObjectFactory<SomeBean>;
+    public factories: ObjectFactory<BaseType>[];
+    public normalField: string;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 3);
+
+        // factory: ObjectFactory<SomeBean>
+        assert_eq!(class.fields[0].name, "factory");
+        assert!(class.fields[0].is_object_factory);
+        assert_eq!(class.fields[0].factory_inner_type, Some("SomeBean".to_string()));
+        assert_eq!(class.fields[0].field_type, "SomeBean");
+
+        // factories: ObjectFactory<BaseType>[]
+        assert_eq!(class.fields[1].name, "factories");
+        assert!(class.fields[1].is_object_factory);
+        assert_eq!(class.fields[1].factory_inner_type, Some("BaseType".to_string()));
+        assert_eq!(class.fields[1].field_type, "list,BaseType");
+
+        // normalField: string
+        assert_eq!(class.fields[2].name, "normalField");
+        assert!(!class.fields[2].is_object_factory);
+        assert_eq!(class.fields[2].factory_inner_type, None);
+        assert_eq!(class.fields[2].field_type, "string");
     }
 }

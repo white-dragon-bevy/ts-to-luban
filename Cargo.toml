@@ -40,6 +40,7 @@ regex = "1"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
+pathdiff = "0.2.3"
 
 [dev-dependencies]
 tempfile = "3"

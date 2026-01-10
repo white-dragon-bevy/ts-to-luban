@@ -4,6 +4,7 @@ tsconfig = "tsconfig.json"
 [output]
 path = "configs/defines/examples.xml"
 module_name = "examples"
+table_output_path = "src/ts-tables"
 
 # 第一个数据源 - 核心表
 [[sources]]
@@ -24,10 +25,22 @@ path = "src/__examples__/table-modes.ts"
 output_path = "configs/defines/table-modes.xml"
 module_name = "modes"
 
+# 第四个数据源 - 继承关系测试
+[[sources]]
+type = "file"
+path = "src/__examples__/inheritance.ts"
+output_path = "configs/defines/inheritance.xml"
+module_name = "inheritance"
+
 # table_mappings - 按模块匹配
 [[table_mappings]]
 pattern = "Weapon|Armor"
 input = "*@../datas/equipment/{name}/"
+
+[[table_mappings]]
+pattern = "GameConfig|ServerSettings"
+input = "../datas/{name}/"
+
 
 [[table_mappings]]
 pattern = ".*"
