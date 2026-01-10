@@ -1,0 +1,10 @@
+[project]
+tsconfig = "../luban-ts/tsconfig.json"
+
+[output]
+path = "../luban-ts/out/examples.xml"
+module_name = "examples"
+
+[[sources]]
+type = "directory"
+path = "../luban-ts/src/__examples__"

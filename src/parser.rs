@@ -1,10 +1,12 @@
 pub mod class_info;
+pub mod decorator;
 pub mod enum_info;
 pub mod field_info;
 
-pub use class_info::ClassInfo;
+pub use class_info::{ClassInfo, LubanTableConfig};
+pub use decorator::{DecoratorArg, ParsedDecorator, parse_decorator};
 pub use enum_info::{EnumInfo, EnumVariant};
-pub use field_info::FieldInfo;
+pub use field_info::{FieldInfo, FieldValidators, SizeConstraint};
 
 use anyhow::Result;
 use std::path::Path;
@@ -417,6 +419,39 @@ impl TsParser {
             }
         }
 
+        // Parse class decorators for @LubanTable
+        let mut luban_table = None;
+        for dec in &class_decl.class.decorators {
+            if let Some(parsed) = parse_decorator(dec) {
+                if parsed.name == "LubanTable" {
+                    luban_table = Some(LubanTableConfig {
+                        mode: parsed.named_args.get("mode")
+                            .and_then(|v| match v {
+                                DecoratorArg::String(s) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .unwrap_or_else(|| "map".to_string()),
+                        index: parsed.named_args.get("index")
+                            .and_then(|v| match v {
+                                DecoratorArg::String(s) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .unwrap_or_default(),
+                        group: parsed.named_args.get("group")
+                            .and_then(|v| match v {
+                                DecoratorArg::String(s) => Some(s.clone()),
+                                _ => None,
+                            }),
+                        tags: parsed.named_args.get("tags")
+                            .and_then(|v| match v {
+                                DecoratorArg::String(s) => Some(s.clone()),
+                                _ => None,
+                            }),
+                    });
+                }
+            }
+        }
+
         Some(ClassInfo {
             name,
             comment: class_comment,
@@ -430,6 +465,7 @@ impl TsParser {
             output_path: None,
             module_name: None,
             type_params,
+            luban_table,
         })
     }
 
@@ -498,6 +534,7 @@ impl TsParser {
             output_path: None,
             module_name: None,
             type_params,
+            luban_table: None,
         })
     }
 
@@ -523,11 +560,15 @@ impl TsParser {
             .map(|ann| self.convert_type_with_params(&ann.type_ann, type_params))
             .unwrap_or_else(|| "string".to_string());
 
+        // Parse field decorators from TsParamProp
+        let validators = parse_field_decorators(&prop.decorators);
+
         Some(FieldInfo {
             name,
             field_type,
             comment: None,
             is_optional,
+            validators,
         })
     }
 
@@ -562,11 +603,15 @@ impl TsParser {
         // Extract field comment
         let comment = self.get_leading_comment(prop.span.lo, comments);
 
+        // Parse field decorators from ClassProp
+        let validators = parse_field_decorators(&prop.decorators);
+
         Some(FieldInfo {
             name,
             field_type,
             comment,
             is_optional: prop.is_optional,
+            validators,
         })
     }
 
@@ -595,6 +640,7 @@ impl TsParser {
             field_type,
             comment,
             is_optional: prop.optional,
+            validators: FieldValidators::default(),
         })
     }
 
@@ -800,6 +846,72 @@ fn parse_jsdoc_description_excluding_tags(text: &str, exclude_tags: &[&str]) -> 
         }
     }
     description
+}
+
+/// Parse field decorators and return FieldValidators
+fn parse_field_decorators(decorators: &[Decorator]) -> FieldValidators {
+    let mut validators = FieldValidators::default();
+
+    for dec in decorators {
+        if let Some(parsed) = parse_decorator(dec) {
+            match parsed.name.as_str() {
+                "Ref" => {
+                    if let Some(DecoratorArg::Identifier(class_name)) = parsed.args.first() {
+                        validators.ref_target = Some(class_name.clone());
+                    }
+                }
+                "Range" => {
+                    if parsed.args.len() >= 2 {
+                        if let (Some(DecoratorArg::Number(min)), Some(DecoratorArg::Number(max))) =
+                            (parsed.args.get(0), parsed.args.get(1))
+                        {
+                            validators.range = Some((*min, *max));
+                        }
+                    }
+                }
+                "Required" => {
+                    validators.required = true;
+                }
+                "Size" => {
+                    match parsed.args.len() {
+                        1 => {
+                            if let Some(DecoratorArg::Number(n)) = parsed.args.first() {
+                                validators.size = Some(SizeConstraint::Exact(*n as usize));
+                            }
+                        }
+                        2 => {
+                            if let (Some(DecoratorArg::Number(min)), Some(DecoratorArg::Number(max))) =
+                                (parsed.args.get(0), parsed.args.get(1))
+                            {
+                                validators.size = Some(SizeConstraint::Range(*min as usize, *max as usize));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                "Set" => {
+                    for arg in &parsed.args {
+                        match arg {
+                            DecoratorArg::Number(n) => validators.set_values.push(n.to_string()),
+                            DecoratorArg::String(s) => validators.set_values.push(s.clone()),
+                            _ => {}
+                        }
+                    }
+                }
+                "Index" => {
+                    if let Some(DecoratorArg::String(field)) = parsed.args.first() {
+                        validators.index_field = Some(field.clone());
+                    }
+                }
+                "Nominal" => {
+                    validators.nominal = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    validators
 }
 
 #[cfg(test)]

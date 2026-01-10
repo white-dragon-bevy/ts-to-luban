@@ -11,3 +11,4 @@
 *.swp
 node_modules/
 output/
+out/

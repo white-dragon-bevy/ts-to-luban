@@ -21,6 +21,12 @@ use base_class::BaseClassResolver;
 use generator::{XmlGenerator, generate_enum_xml, generate_bean_type_enums_xml};
 use cache::Cache;
 
+mod table_registry;
+use table_registry::TableRegistry;
+
+mod table_mapping;
+use table_mapping::TableMappingResolver;
+
 #[derive(Parser)]
 #[command(name = "luban-gen")]
 #[command(about = "High-performance TypeScript to Luban XML Schema generator")]
@@ -185,6 +191,21 @@ fn main() -> Result<()> {
 
     println!("  Extracted {} classes/interfaces, {} enums", all_classes.len(), all_enums.len());
 
+    // First pass: collect @LubanTable classes into registry for ref resolution
+    // Use per-source module_name if set, otherwise use default config.output.module_name
+    let default_module_name = &config.output.module_name;
+    let mut table_registry = TableRegistry::new();
+    for class in &all_classes {
+        if class.luban_table.is_some() {
+            let namespace = class.module_name.as_deref().unwrap_or(default_module_name.as_str());
+            table_registry.register(&class.name, namespace);
+        }
+    }
+    if cli.verbose {
+        println!("  Registered {} tables in registry",
+            all_classes.iter().filter(|c| c.luban_table.is_some()).count());
+    }
+
     // Filter by cache
     println!("\n[3/4] Checking cache...");
     let mut unchanged = 0;
@@ -231,7 +252,8 @@ fn main() -> Result<()> {
 
     // Generate XML - group by (output_path, module_name)
     println!("\n[4/4] Generating XML...");
-    let xml_generator = XmlGenerator::new(&base_resolver, &type_mapper);
+    let table_mapping_resolver = TableMappingResolver::new(&config.table_mappings);
+    let xml_generator = XmlGenerator::new(&base_resolver, &type_mapper, &table_registry, &table_mapping_resolver);
 
     // Group classes by (output_path, module_name)
     let default_output = config.output.path.clone();

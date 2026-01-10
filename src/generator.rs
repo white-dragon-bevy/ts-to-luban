@@ -1,15 +1,32 @@
-use crate::parser::{ClassInfo, EnumInfo, FieldInfo};
+use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators};
+use crate::parser::field_info::SizeConstraint;
 use crate::base_class::BaseClassResolver;
 use crate::type_mapper::TypeMapper;
+use crate::table_registry::TableRegistry;
+use crate::table_mapping::TableMappingResolver;
 
 pub struct XmlGenerator<'a> {
     base_resolver: &'a BaseClassResolver<'a>,
     type_mapper: &'a TypeMapper,
+    table_registry: &'a TableRegistry,
+    table_mapping_resolver: &'a TableMappingResolver,
+    /// Current module name for generating relative refs
+    current_module: String,
 }
 
 impl<'a> XmlGenerator<'a> {
-    pub fn new(base_resolver: &'a BaseClassResolver<'a>, type_mapper: &'a TypeMapper) -> Self {
-        Self { base_resolver, type_mapper }
+    pub fn new(
+        base_resolver: &'a BaseClassResolver<'a>,
+        type_mapper: &'a TypeMapper,
+        table_registry: &'a TableRegistry,
+        table_mapping_resolver: &'a TableMappingResolver,
+    ) -> Self {
+        Self { base_resolver, type_mapper, table_registry, table_mapping_resolver, current_module: String::new() }
+    }
+
+    /// Set current module name for ref resolution
+    pub fn with_module(&mut self, module: &str) {
+        self.current_module = module.to_string();
     }
 
     pub fn generate(&self, classes: &[ClassInfo], module_name: &str) -> String {
@@ -19,13 +36,63 @@ impl<'a> XmlGenerator<'a> {
             String::new(),
         ];
 
+        // Generate beans
         for class in classes {
             self.generate_bean(&mut lines, class);
             lines.push(String::new());
         }
 
+        // Generate tables for @LubanTable classes
+        let luban_tables: Vec<_> = classes.iter()
+            .filter(|c| c.luban_table.is_some())
+            .collect();
+
+        if !luban_tables.is_empty() {
+            lines.push("    <!-- 数据表配置 -->".to_string());
+            for class in luban_tables {
+                self.generate_table_element(&mut lines, class);
+            }
+            lines.push(String::new());
+        }
+
         lines.push("</module>".to_string());
         lines.join("\n")
+    }
+
+    fn generate_table_element(&self, lines: &mut Vec<String>, class: &ClassInfo) {
+        let config = class.luban_table.as_ref().unwrap();
+
+        // Resolve input/output from table_mappings config
+        let (input, output) = self.table_mapping_resolver
+            .resolve(&class.name)
+            .unwrap_or_else(|| panic!(
+                "Error: No table_mapping for class '{}'. Add [[table_mappings]] in config.",
+                class.name
+            ));
+
+        let table_name = format!("{}Table", class.name);
+
+        let mut attrs = vec![
+            format!(r#"name="{}""#, table_name),
+            format!(r#"value="{}""#, class.name),
+            format!(r#"mode="{}""#, config.mode),
+            format!(r#"index="{}""#, config.index),
+            format!(r#"input="{}""#, input),
+        ];
+
+        if let Some(out) = output {
+            attrs.push(format!(r#"output="{}""#, out));
+        }
+
+        if let Some(group) = &config.group {
+            attrs.push(format!(r#"group="{}""#, group));
+        }
+
+        if let Some(tags) = &config.tags {
+            attrs.push(format!(r#"tags="{}""#, tags));
+        }
+
+        lines.push(format!(r#"    <table {}/>"#, attrs.join(" ")));
     }
 
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo) {
@@ -58,12 +125,27 @@ impl<'a> XmlGenerator<'a> {
     }
 
     fn generate_field(&self, lines: &mut Vec<String>, field: &FieldInfo) {
-        let mapped_type = self.type_mapper.map_full_type(&field.field_type);
+        let mut mapped_type = self.type_mapper.map_full_type(&field.field_type);
+        let validators = &field.validators;
 
-        let final_type = if field.is_optional && !mapped_type.starts_with("list,") {
-            format!("{}?", mapped_type)
+        // @Set only supports int/long/string/enum, not double
+        // When @Set is present and type is double, convert to int
+        if !validators.set_values.is_empty() && mapped_type == "double" {
+            mapped_type = "int".to_string();
+        }
+
+        // Check if this is a container type (list, map, array, set)
+        let is_container = mapped_type.starts_with("list,")
+            || mapped_type.starts_with("map,")
+            || mapped_type.starts_with("array,")
+            || mapped_type.starts_with("set,");
+
+        let final_type = if is_container {
+            // Handle container types with size/index validators
+            self.apply_container_validators(&mapped_type, validators)
         } else {
-            mapped_type
+            // Handle scalar types with validators
+            self.apply_scalar_validators(&mapped_type, validators, field.is_optional)
         };
 
         let comment_attr = field.comment.as_ref()
@@ -75,6 +157,101 @@ impl<'a> XmlGenerator<'a> {
             field.name, final_type, comment_attr
         ));
     }
+
+    /// Apply validators to scalar types
+    /// e.g., "int" -> "int!#ref=examples.TbItem#range=[1,100]"
+    fn apply_scalar_validators(&self, base_type: &str, validators: &FieldValidators, is_optional: bool) -> String {
+        let mut result = base_type.to_string();
+
+        // Add optional marker
+        if is_optional {
+            result.push('?');
+        }
+
+        // Add required marker (!) - notDefaultValue validator
+        if validators.required {
+            result.push('!');
+        }
+
+        // Collect validator suffixes
+        let mut validator_parts = Vec::new();
+
+        // Handle ref - resolve full namespace path using TableRegistry
+        if let Some(ref_target) = &validators.ref_target {
+            // Must resolve via registry, error if not found
+            let resolved = self.table_registry.resolve_ref(ref_target)
+                .unwrap_or_else(|| panic!("Error: @Ref target '{}' not found. Make sure '{}' has @LubanTable decorator.", ref_target, ref_target));
+            validator_parts.push(format!("ref={}", resolved));
+        }
+
+        // Handle range
+        if let Some((min, max)) = &validators.range {
+            // Format numbers nicely (remove unnecessary decimal points)
+            let min_str = format_number(*min);
+            let max_str = format_number(*max);
+            validator_parts.push(format!("range=[{},{}]", min_str, max_str));
+        }
+
+        // Handle set
+        if !validators.set_values.is_empty() {
+            let set_str = validators.set_values.join(";");
+            validator_parts.push(format!("set={}", set_str));
+        }
+
+        // Append validators with # prefix
+        if !validator_parts.is_empty() {
+            result.push_str(&format!("#{}", validator_parts.join("#")));
+        }
+
+        result
+    }
+
+    /// Apply validators to container types
+    /// e.g., "list,int" -> "(list#size=4#index=id),int#ref=TbItem"
+    fn apply_container_validators(&self, container_type: &str, validators: &FieldValidators) -> String {
+        // Parse container type: "list,ElementType" or "map,KeyType,ValueType"
+        let parts: Vec<&str> = container_type.splitn(2, ',').collect();
+        if parts.len() < 2 {
+            return container_type.to_string();
+        }
+
+        let container = parts[0];
+        let element_type = parts[1];
+
+        // Build container validators
+        let mut container_mods = Vec::new();
+
+        if let Some(size) = &validators.size {
+            match size {
+                SizeConstraint::Exact(n) => container_mods.push(format!("size={}", n)),
+                SizeConstraint::Range(min, max) => container_mods.push(format!("size=[{},{}]", min, max)),
+            }
+        }
+
+        if let Some(index) = &validators.index_field {
+            container_mods.push(format!("index={}", index));
+        }
+
+        // Build element type with its validators (ref, range, set, required)
+        let element_validators = FieldValidators {
+            ref_target: validators.ref_target.clone(),
+            range: validators.range,
+            required: validators.required,
+            set_values: validators.set_values.clone(),
+            // These are container-level, not element-level
+            size: None,
+            index_field: None,
+            nominal: validators.nominal,
+        };
+
+        let element_with_validators = self.apply_scalar_validators(element_type, &element_validators, false);
+
+        if container_mods.is_empty() {
+            format!("{},{}", container, element_with_validators)
+        } else {
+            format!("({}#{}),{}", container, container_mods.join("#"), element_with_validators)
+        }
+    }
 }
 
 fn escape_xml(s: &str) -> String {
@@ -83,6 +260,16 @@ fn escape_xml(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+/// Format a number, removing unnecessary decimal points
+/// e.g., 1.0 -> "1", 1.5 -> "1.5"
+fn format_number(n: f64) -> String {
+    if n.fract() == 0.0 {
+        format!("{}", n as i64)
+    } else {
+        format!("{}", n)
+    }
 }
 
 /// Generate XML for enums only
@@ -210,11 +397,41 @@ pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&s
     lines.join("\n")
 }
 
+/// Generate a single <table> element for a class with @LubanTable decorator
+pub fn generate_table(
+    class: &ClassInfo,
+    input: &str,
+    output: &str,
+) -> String {
+    let config = class.luban_table.as_ref().expect("Class must have @LubanTable");
+
+    let mut attrs = vec![
+        format!(r#"name="{}""#, class.name),
+        format!(r#"value="{}""#, class.name),
+        format!(r#"mode="{}""#, config.mode),
+        format!(r#"index="{}""#, config.index),
+        format!(r#"input="{}""#, input),
+        format!(r#"output="{}""#, output),
+    ];
+
+    if let Some(group) = &config.group {
+        attrs.push(format!(r#"group="{}""#, group));
+    }
+
+    if let Some(tags) = &config.tags {
+        attrs.push(format!(r#"tags="{}""#, tags));
+    }
+
+    format!(r#"    <table {}/>"#, attrs.join(" "))
+}
+
 #[cfg(test)]
 fn generate_xml(classes: &[ClassInfo], default_base: &str) -> String {
     let base_resolver = BaseClassResolver::new(default_base, &[]);
     let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
-    let generator = XmlGenerator::new(&base_resolver, &type_mapper);
+    let table_registry = TableRegistry::new();
+    let table_mapping_resolver = TableMappingResolver::new(&[]);
+    let generator = XmlGenerator::new(&base_resolver, &type_mapper, &table_registry, &table_mapping_resolver);
     generator.generate(classes, "")
 }
 
@@ -228,6 +445,7 @@ mod tests {
             field_type: field_type.to_string(),
             comment: None,
             is_optional: optional,
+            validators: FieldValidators::default(),
         }
     }
 
@@ -243,6 +461,7 @@ mod tests {
                     field_type: "string".to_string(),
                     comment: Some("Name field".to_string()),
                     is_optional: false,
+                    validators: FieldValidators::default(),
                 },
             ],
             implements: vec![],
@@ -253,6 +472,7 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
+            luban_table: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -275,6 +495,7 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
+            luban_table: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -296,6 +517,7 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
+            luban_table: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -319,6 +541,7 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
+            luban_table: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");
@@ -341,6 +564,7 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
+            luban_table: None,
         };
 
         let xml = generate_xml(&[class], "TsClass");

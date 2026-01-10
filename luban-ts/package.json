@@ -1,0 +1,24 @@
+{
+  "name": "@white-dragon-bevy/ts-to-luban",
+  "version": "0.1.0",
+  "main": "out/init.lua",
+  "types": "out/index.d.ts",
+  "files": ["out"],
+  "scripts": {
+    "build": "rbxtsc",
+    "watch": "rbxtsc -w",
+    "ts-luban": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml -f",
+    "luban": "dotnet node_modules/@rbxts/luban/src/Luban/bin/Release/net8.0/Luban.dll",
+    "config:codebuild": "npm run ts-luban && npm run luban -- -t all -c roblox-ts-json --conf configs/luban.conf -x outputCodeDir=out/configs"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0",
+    "@rbxts/luban": "0.6.5",
+    "@rbxts/types": "^1.0.896",
+    "roblox-ts": "3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@rbxts/compiler-types": "3.0.0-types.0"
+  }
+}

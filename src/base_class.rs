@@ -61,6 +61,7 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: std::collections::HashMap::new(),
+            luban_table: None,
         }
     }
 

@@ -15,6 +15,8 @@ pub struct Config {
     pub parent_mappings: Vec<ParentMapping>,
     #[serde(default)]
     pub ref_configs: Vec<RefConfig>,
+    #[serde(default)]
+    pub table_mappings: Vec<TableMapping>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,6 +106,13 @@ pub struct ParentMapping {
 #[derive(Debug, Deserialize, Clone)]
 pub struct RefConfig {
     pub path: PathBuf,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TableMapping {
+    pub pattern: String,
+    pub input: String,
+    pub output: Option<String>,
 }
 
 impl Config {
@@ -517,6 +526,25 @@ module_name = "matched"
         } else {
             panic!("Expected Glob source");
         }
+    }
+
+    #[test]
+    fn test_parse_table_mappings() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[table_mappings]]
+pattern = "Tb.*"
+input = "configs/{name}.xlsx"
+output = "{name}"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.table_mappings.len(), 1);
+        assert_eq!(config.table_mappings[0].pattern, "Tb.*");
     }
 
 }

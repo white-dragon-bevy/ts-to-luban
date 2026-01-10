@@ -2,6 +2,15 @@ use super::field_info::FieldInfo;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Configuration for Luban table generation from @luban-table decorator
+#[derive(Debug, Clone, Default)]
+pub struct LubanTableConfig {
+    pub mode: String,
+    pub index: String,
+    pub group: Option<String>,
+    pub tags: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
     pub name: String,
@@ -23,4 +32,6 @@ pub struct ClassInfo {
     /// e.g., {"T": "SkillMetadata", "K": "string"}
     #[allow(dead_code)]
     pub type_params: HashMap<String, String>,
+    /// Luban table configuration from @luban-table decorator
+    pub luban_table: Option<LubanTableConfig>,
 }

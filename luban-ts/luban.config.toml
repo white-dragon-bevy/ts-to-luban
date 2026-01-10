@@ -1,0 +1,27 @@
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "configs/defines/examples.xml"
+module_name = "examples"
+
+# 第一个数据源 - 核心表
+[[sources]]
+type = "file"
+path = "src/__examples__/all-validators.ts"
+
+# 第二个数据源 - 物品模块（独立输出）
+[[sources]]
+type = "file"
+path = "src/__examples__/items.ts"
+output_path = "configs/defines/items.xml"
+module_name = "items"
+
+# table_mappings - 按模块匹配
+[[table_mappings]]
+pattern = "Weapon|Armor"
+input = "*@../datas/equipment/{name}/"
+
+[[table_mappings]]
+pattern = ".*"
+input = "*@../datas/{name}/"
