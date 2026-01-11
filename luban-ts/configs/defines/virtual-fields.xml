@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="virtual_fields" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="WeaponConfig" comment="武器配置 注意：mainStat 和 subStat 字段不会在 TypeScript 中定义 它们通过 luban.config.toml 中的 virtual_fields 配置添加">
+        <var name="id" type="double"/>
+        <var name="name" type="string"/>
+        <var name="mainStat" type="ScalingStat" comment="主属性" tags="relocateTo=TScalingStat,prefix=_main"/>
+        <var name="subStat" type="ScalingStat" comment="副属性" tags="relocateTo=TScalingStat,prefix=_sub"/>
+    </bean>
+
+    <bean name="ArmorConfig" comment="装甲配置">
+        <var name="id" type="double"/>
+        <var name="name" type="string"/>
+        <var name="defenseStat" type="ScalingStat" comment="防御属性" tags="relocateTo=TScalingStat,prefix=_defense"/>
+    </bean>
+
+    <!-- 数据表配置 -->
+    <table name="WeaponConfigTable" value="WeaponConfig" mode="map" index="id" input="*@../datas/equipment/weaponconfig/"/>
+    <table name="ArmorConfigTable" value="ArmorConfig" mode="map" index="id" input="*@../datas/equipment/armorconfig/"/>
+
+</module>

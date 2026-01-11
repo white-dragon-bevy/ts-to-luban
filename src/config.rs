@@ -15,6 +15,8 @@ pub struct Config {
     pub ref_configs: Vec<RefConfig>,
     #[serde(default)]
     pub table_mappings: Vec<TableMapping>,
+    #[serde(default)]
+    pub virtual_fields: Vec<VirtualFieldsConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +105,59 @@ pub struct TableMapping {
     pub pattern: String,
     pub input: String,
     pub output: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct VirtualFieldsConfig {
+    pub class: String,
+    pub fields: Vec<VirtualField>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct VirtualField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub field_type: String,
+    pub comment: Option<String>,
+    #[serde(rename = "is_optional")]
+    pub optional: Option<bool>,
+    #[serde(rename = "relocate_to")]
+    pub relocate_to: Option<RelocateToConfig>,
+    pub validators: Option<FieldValidators>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RelocateToConfig {
+    pub target: String,
+    pub prefix: String,
+    #[serde(rename = "target_bean")]
+    pub target_bean: Option<String>,
+}
+
+// Forward declaration for FieldValidators - actual definition in parser/field_info.rs
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct FieldValidators {
+    #[serde(default)]
+    pub ref_target: Option<String>,
+    #[serde(default)]
+    pub range: Option<(f64, f64)>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub size: Option<SizeConstraint>,
+    #[serde(default)]
+    pub set_values: Vec<String>,
+    #[serde(default)]
+    pub index_field: Option<String>,
+    #[serde(default)]
+    pub nominal: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum SizeConstraint {
+    Exact(usize),
+    Range(usize, usize),
 }
 
 impl Config {
@@ -559,5 +614,156 @@ table_output_path = "out/tables"
             config.output.table_output_path,
             Some(PathBuf::from("out/tables"))
         );
+    }
+
+    #[test]
+    fn test_parse_virtual_fields_basic() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "mainStat", type = "ScalingStat", comment = "主属性", relocate_to = { target = "TScalingStat", prefix = "_main_stat" } }
+]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.virtual_fields.len(), 1);
+        assert_eq!(config.virtual_fields[0].class, "WeaponConfig");
+        assert_eq!(config.virtual_fields[0].fields.len(), 1);
+        assert_eq!(config.virtual_fields[0].fields[0].name, "mainStat");
+        assert_eq!(config.virtual_fields[0].fields[0].field_type, "ScalingStat");
+        assert_eq!(
+            config.virtual_fields[0].fields[0].comment,
+            Some("主属性".to_string())
+        );
+        assert_eq!(
+            config.virtual_fields[0].fields[0]
+                .relocate_to
+                .as_ref()
+                .unwrap()
+                .target,
+            "TScalingStat"
+        );
+        assert_eq!(
+            config.virtual_fields[0].fields[0]
+                .relocate_to
+                .as_ref()
+                .unwrap()
+                .prefix,
+            "_main_stat"
+        );
+    }
+
+    #[test]
+    fn test_parse_virtual_fields_multiple_blocks() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "mainStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_main" } }
+]
+
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "subStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_sub" } }
+]
+
+[[virtual_fields]]
+class = "ArmorConfig"
+fields = [
+    { name = "defenseStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_def" } }
+]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.virtual_fields.len(), 3);
+        // First block
+        assert_eq!(config.virtual_fields[0].class, "WeaponConfig");
+        assert_eq!(config.virtual_fields[0].fields[0].name, "mainStat");
+        // Second block (same class)
+        assert_eq!(config.virtual_fields[1].class, "WeaponConfig");
+        assert_eq!(config.virtual_fields[1].fields[0].name, "subStat");
+        // Third block (different class)
+        assert_eq!(config.virtual_fields[2].class, "ArmorConfig");
+        assert_eq!(config.virtual_fields[2].fields[0].name, "defenseStat");
+    }
+
+    #[test]
+    fn test_parse_virtual_fields_with_target_bean() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "mainScalingStat", type = "ScalingStatRef", relocate_to = { target = "TScalingStat", prefix = "_main", target_bean = "ScalingStat" } }
+]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.virtual_fields.len(), 1);
+        assert_eq!(
+            config.virtual_fields[0].fields[0]
+                .relocate_to
+                .as_ref()
+                .unwrap()
+                .target_bean,
+            Some("ScalingStat".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_virtual_fields_with_validators() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+
+[[virtual_fields]]
+class = "ItemConfig"
+fields = [
+    { name = "optionalRef", type = "ItemConfigRef", is_optional = true, validators = { required = true } }
+]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.virtual_fields.len(), 1);
+        assert_eq!(config.virtual_fields[0].fields[0].optional, Some(true));
+        assert_eq!(
+            config.virtual_fields[0].fields[0]
+                .validators
+                .as_ref()
+                .unwrap()
+                .required,
+            true
+        );
+    }
+
+    #[test]
+    fn test_parse_virtual_fields_empty() {
+        let toml_str = r#"
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output.xml"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.virtual_fields.len(), 0);
     }
 }

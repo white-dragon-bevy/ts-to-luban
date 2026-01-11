@@ -264,6 +264,109 @@ export enum UnitFlag {
 | `@ignore` | 忽略导出 | `@ignore` |
 | `@flags` | 位标志枚举 | `@flags="true"` |
 
+### 7. 虚拟字段配置（Virtual Fields）
+
+虚拟字段允许在 TOML 配置文件中为类添加字段，这些字段不会在 TypeScript 代码中定义，但会出现在生成的 XML schema 中。主要用于 `relocateTo` 功能。
+
+#### 基本用法
+
+在 `luban.config.toml` 中添加 `[[virtual_fields]]` 配置：
+
+```toml
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    {
+        name = "mainStat",
+        type = "ScalingStat",
+        comment = "主属性",
+        relocate_to = { target = "TScalingStat", prefix = "_main" }
+    }
+]
+```
+
+#### 生成的 XML
+
+```xml
+<bean name="WeaponConfig">
+    <var name="id" type="double"/>
+    <var name="name" type="string"/>
+    <var name="mainStat" type="ScalingStat" comment="主属性"
+         tags="relocateTo=TScalingStat,prefix=_main"/>
+</bean>
+```
+
+#### 配置选项
+
+| 选项 | 必需 | 说明 |
+|------|------|------|
+| `class` | ✅ | 目标类名 |
+| `fields` | ✅ | 虚拟字段列表 |
+
+**字段选项**：
+- `name`: 字段名（必需）
+- `type`: 字段类型（必需）
+- `comment`: 字段注释（可选）
+- `is_optional`: 是否可空（可选，默认 false）
+- `relocate_to`: relocate 配置（可选）
+  - `target`: 目标表名
+  - `prefix`: Key 后缀
+  - `target_bean`: 目标 bean 类型（可选，用于自动转换）
+- `validators`: 验证器配置（可选）
+
+#### 同一类多个虚拟字段块
+
+支持为同一个类定义多个虚拟字段配置块：
+
+```toml
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "mainStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_main" } }
+]
+
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "subStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_sub" } }
+]
+```
+
+#### 完整配置示例
+
+```toml
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "configs/defines/generated.xml"
+
+[[sources]]
+type = "file"
+path = "src/types.ts"
+
+# 虚拟字段：WeaponConfig
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "mainStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_main" } }
+]
+
+# 虚拟字段：ArmorConfig
+[[virtual_fields]]
+class = "ArmorConfig"
+fields = [
+    { name = "defenseStat", type = "ScalingStat", relocate_to = { target = "TScalingStat", prefix = "_defense" } }
+]
+```
+
+#### 注意事项
+
+1. 如果 `class` 指定的类不存在，虚拟字段不会注入，Luban 会在后续处理时报错
+2. 虚拟字段主要用于 `relocateTo` 功能，将字段数据导出到其他表
+3. 虚拟字段支持所有验证器配置（`@Ref`, `@Range`, `@Required` 等）
+4. 同一类可以定义多个 `[[virtual_fields]]` 配置块，所有字段都会注入
+
 ## 配置文件
 
 完整配置示例 (`luban.config.toml`)：

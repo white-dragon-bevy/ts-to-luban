@@ -39,6 +39,34 @@ path = "src/__examples__/constructor-type.ts"
 output_path = "configs/defines/constructor-type.xml"
 module_name = "constructor"
 
+# 第六个数据源 - 虚拟字段测试
+[[sources]]
+type = "file"
+path = "src/__examples__/virtual-fields.ts"
+output_path = "configs/defines/virtual-fields.xml"
+module_name = "virtual_fields"
+
+# 虚拟字段配置：WeaponConfig
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "mainStat", type = "ScalingStat", comment = "主属性", relocate_to = { target = "TScalingStat", prefix = "_main" } }
+]
+
+# 虚拟字段配置：WeaponConfig 第二个配置块（支持同一 class 多个配置）
+[[virtual_fields]]
+class = "WeaponConfig"
+fields = [
+    { name = "subStat", type = "ScalingStat", comment = "副属性", relocate_to = { target = "TScalingStat", prefix = "_sub" } }
+]
+
+# 虚拟字段配置：ArmorConfig
+[[virtual_fields]]
+class = "ArmorConfig"
+fields = [
+    { name = "defenseStat", type = "ScalingStat", comment = "防御属性", relocate_to = { target = "TScalingStat", prefix = "_defense" } }
+]
+
 # table_mappings - 按模块匹配
 [[table_mappings]]
 pattern = "Weapon|Armor"

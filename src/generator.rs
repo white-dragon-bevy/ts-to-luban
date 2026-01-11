@@ -155,9 +155,15 @@ impl<'a> XmlGenerator<'a> {
                     .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
                     .unwrap_or_default();
 
+                let tags_attr = field
+                    .relocate_tags
+                    .as_ref()
+                    .map(|t| format!(r#" tags="{}""#, escape_xml(t)))
+                    .unwrap_or_default();
+
                 lines.push(format!(
-                    r#"        <var name="{}" type="{}"{}/>"#,
-                    field.name, final_type, comment_attr
+                    r#"        <var name="{}" type="{}"{}{}/>"#,
+                    field.name, final_type, comment_attr, tags_attr
                 ));
                 return;
             }
@@ -192,9 +198,15 @@ impl<'a> XmlGenerator<'a> {
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
+        let tags_attr = field
+            .relocate_tags
+            .as_ref()
+            .map(|t| format!(r#" tags="{}""#, escape_xml(t)))
+            .unwrap_or_default();
+
         lines.push(format!(
-            r#"        <var name="{}" type="{}"{}/>"#,
-            field.name, final_type, comment_attr
+            r#"        <var name="{}" type="{}"{}{}/>"#,
+            field.name, final_type, comment_attr, tags_attr
         ));
     }
 
@@ -534,6 +546,7 @@ mod tests {
             is_constructor: false,
             constructor_inner_type: None,
             original_type: field_type.to_string(),
+            relocate_tags: None,
         }
     }
 
@@ -554,6 +567,7 @@ mod tests {
                 is_constructor: false,
                 constructor_inner_type: None,
                 original_type: "string".to_string(),
+                relocate_tags: None,
             }],
             implements: vec![],
             extends: Some("BaseClass".to_string()),

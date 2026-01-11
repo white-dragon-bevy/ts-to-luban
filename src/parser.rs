@@ -2,11 +2,13 @@ pub mod class_info;
 pub mod decorator;
 pub mod enum_info;
 pub mod field_info;
+pub mod virtual_fields;
 
 pub use class_info::{ClassInfo, LubanTableConfig};
 pub use decorator::{parse_decorator, DecoratorArg, ParsedDecorator};
 pub use enum_info::{EnumInfo, EnumVariant};
 pub use field_info::{FieldInfo, FieldValidators, SizeConstraint};
+pub use virtual_fields::inject_virtual_fields;
 
 use anyhow::Result;
 use std::collections::HashMap;
@@ -668,6 +670,7 @@ impl TsParser {
             is_constructor: type_info.is_constructor,
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
+            relocate_tags: None,
         })
     }
 
@@ -738,6 +741,7 @@ impl TsParser {
             is_constructor: type_info.is_constructor,
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
+            relocate_tags: None,
         })
     }
 
@@ -788,6 +792,7 @@ impl TsParser {
             is_constructor: type_info.is_constructor,
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
+            relocate_tags: None,
         })
     }
 

@@ -32,6 +32,8 @@ pub struct FieldInfo {
     pub constructor_inner_type: Option<String>,
     /// Original TypeScript type (before mapping)
     pub original_type: String,
+    /// Relocate tags for virtual fields (e.g., "relocateTo=TScalingStat,prefix=_main")
+    pub relocate_tags: Option<String>,
 }
 
 impl Default for FieldInfo {
@@ -47,6 +49,7 @@ impl Default for FieldInfo {
             is_constructor: false,
             constructor_inner_type: None,
             original_type: String::new(),
+            relocate_tags: None,
         }
     }
 }
