@@ -45,6 +45,37 @@ impl<'a> CreatorGenerator<'a> {
         lines.push(format!("export function create{}(json: unknown): {} {{", class.name, class.name));
         lines.push(format!("    const obj = new {}();", class.name));
 
+        // Collect parent class names in inheritance chain (from top to bottom)
+        let mut parent_chain = Vec::new();
+        let mut current_parent = class.extends.as_ref();
+        while let Some(parent_name) = current_parent {
+            parent_chain.push(parent_name.clone());
+            if let Some(parent) = self.all_classes.iter().find(|c| &c.name == parent_name) {
+                current_parent = parent.extends.as_ref();
+            } else {
+                break;
+            }
+        }
+        parent_chain.reverse(); // Reverse to get top-level parent first
+
+        // Collect child class field names to check for redeclarations
+        let child_field_names: HashSet<&str> = class.fields.iter().map(|f| f.name.as_str()).collect();
+
+        // Generate field assignments for parent classes first
+        // Skip fields that are redeclared in the child class
+        for parent_name in &parent_chain {
+            if let Some(parent) = self.all_classes.iter().find(|c| &c.name == parent_name) {
+                for field in &parent.fields {
+                    // Skip if this field is redeclared in the child class
+                    if !child_field_names.contains(field.name.as_str()) {
+                        let assignment = self.generate_field_assignment(field);
+                        lines.push(format!("    {}", assignment));
+                    }
+                }
+            }
+        }
+
+        // Then generate field assignments for the current class
         for field in &class.fields {
             let assignment = self.generate_field_assignment(field);
             lines.push(format!("    {}", assignment));
@@ -62,17 +93,20 @@ impl<'a> CreatorGenerator<'a> {
         if field.is_object_factory {
             // ObjectFactory<T> → factory function
             if field.field_type.starts_with("list,") {
-                // Use defined[] for roblox-ts compatibility with .map()
-                format!("obj.{} = ((json as Record<string, unknown>).{} as defined[]).map(item => {{ const data = item as Record<string, unknown>; return () => createBean(data.$type as string, data); }});", name, name)
+                // Use 'in' operator to check if property exists (works better in roblox-ts/luau)
+                format!("obj.{} = \"{}\" in (json as Record<string, unknown>) ? ((json as Record<string, unknown>).{} as defined[]).map(item => {{ const data = item as Record<string, unknown>; return () => createBean(data.$type as string, data); }}) : [];", name, name, name)
             } else {
                 format!("obj.{} = (() => {{ const data = (json as Record<string, unknown>).{} as Record<string, unknown>; return () => createBean(data.$type as string, data); }})();", name, name)
             }
+        } else if !self.is_bean_type(&field.original_type) && (field.original_type.ends_with("[]") || field.original_type.starts_with("list,")) {
+            // Primitive array type - use 'in' operator
+            format!("obj.{} = \"{}\" in (json as Record<string, unknown>) ? (json as Record<string, unknown>).{} as {} : [];", name, name, name, self.ts_type_for_field(&field.original_type))
         } else if self.is_bean_type(&field.original_type) {
             // Nested bean
             let bean_name = self.extract_bean_name(&field.original_type);
             if field.field_type.starts_with("list,") {
-                // Use defined[] for roblox-ts compatibility with .map()
-                format!("obj.{} = ((json as Record<string, unknown>).{} as defined[]).map(item => createBean<{}>(\"{}\", item));", name, name, bean_name, bean_name)
+                // Use 'in' operator to check if property exists
+                format!("obj.{} = \"{}\" in (json as Record<string, unknown>) ? ((json as Record<string, unknown>).{} as defined[]).map(item => createBean<{}>(\"{}\", item)) : [];", name, name, name, bean_name, bean_name)
             } else {
                 format!("obj.{} = createBean<{}>(\"{}\", (json as Record<string, unknown>).{});", name, bean_name, bean_name, name)
             }

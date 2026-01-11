@@ -28,7 +28,7 @@ impl<'a> XmlGenerator<'a> {
 
         // Generate beans
         for class in classes {
-            self.generate_bean(&mut lines, class);
+            self.generate_bean(&mut lines, class, classes);
             lines.push(String::new());
         }
 
@@ -85,7 +85,7 @@ impl<'a> XmlGenerator<'a> {
         lines.push(format!(r#"    <table {}/>"#, attrs.join(" ")));
     }
 
-    fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo) {
+    fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo, all_classes: &[ClassInfo]) {
         let parent = class.extends.clone().unwrap_or_default();
 
         let alias_attr = class.alias.as_ref()
@@ -107,8 +107,25 @@ impl<'a> XmlGenerator<'a> {
             class.name, alias_attr, parent_attr, comment_attr
         ));
 
+        // Collect parent field names to skip redeclared fields
+        let mut parent_field_names = std::collections::HashSet::new();
+        let mut current_parent = class.extends.as_ref();
+        while let Some(parent_name) = current_parent {
+            if let Some(parent) = all_classes.iter().find(|c| &c.name == parent_name) {
+                for field in &parent.fields {
+                    parent_field_names.insert(field.name.as_str());
+                }
+                current_parent = parent.extends.as_ref();
+            } else {
+                break;
+            }
+        }
+
+        // Only generate fields that are not redeclared from parent classes
         for field in &class.fields {
-            self.generate_field(lines, field);
+            if !parent_field_names.contains(field.name.as_str()) {
+                self.generate_field(lines, field);
+            }
         }
 
         lines.push("    </bean>".to_string());

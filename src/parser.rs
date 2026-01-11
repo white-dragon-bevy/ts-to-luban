@@ -610,16 +610,20 @@ impl TsParser {
             return None;
         }
 
-        let type_info = prop
-            .type_ann
-            .as_ref()
-            .map(|ann| self.convert_type_extended(&ann.type_ann, type_params))
-            .unwrap_or_else(|| TypeInfo {
+        // Try to get type from type annotation, or infer from initializer type assertion
+        let type_info = if let Some(ann) = &prop.type_ann {
+            self.convert_type_extended(&ann.type_ann, type_params)
+        } else if let Some(value) = &prop.value {
+            // Try to infer type from initializer with type assertion (e.g., `0 as number`)
+            self.infer_type_from_initializer(value, type_params)
+        } else {
+            TypeInfo {
                 field_type: "string".to_string(),
                 original_type: "string".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
-            });
+            }
+        };
 
         // Extract field comment
         let comment = self.get_leading_comment(prop.span.lo, comments);
@@ -730,6 +734,71 @@ impl TsParser {
             original_type,
             is_object_factory: false,
             factory_inner_type: None,
+        }
+    }
+
+    /// Infer type from an initializer expression
+    /// Handles type assertions like `0 as number` or `"" as string`
+    fn infer_type_from_initializer(&self, expr: &Expr, type_params: &HashMap<String, String>) -> TypeInfo {
+        match expr {
+            // Handle type assertions: `value as Type`
+            Expr::TsAs(as_expr) => {
+                self.convert_type_extended(&as_expr.type_ann, type_params)
+            }
+            // Handle type assertions: `value satisfies Type` (TypeScript 3.7+)
+            Expr::TsSatisfies(satisfies_expr) => {
+                self.convert_type_extended(&satisfies_expr.type_ann, type_params)
+            }
+            // Handle non-null assertions: `value!`
+            Expr::TsNonNull(non_null_expr) => {
+                self.infer_type_from_initializer(&non_null_expr.expr, type_params)
+            }
+            // For literals without type assertion, infer the literal type
+            Expr::Lit(Lit::Num(_)) => TypeInfo {
+                field_type: "number".to_string(),
+                original_type: "number".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
+            Expr::Lit(Lit::Str(_)) => TypeInfo {
+                field_type: "string".to_string(),
+                original_type: "string".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
+            Expr::Lit(Lit::Bool(_)) => TypeInfo {
+                field_type: "bool".to_string(),
+                original_type: "boolean".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
+            Expr::Lit(Lit::Null(_)) | Expr::Unary(UnaryExpr { op: UnaryOp::Void, .. }) => TypeInfo {
+                field_type: "unknown".to_string(),
+                original_type: "unknown".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
+            // For array literals: `[]` or `[1, 2, 3]`
+            Expr::Array(_) => TypeInfo {
+                field_type: "list,unknown".to_string(),
+                original_type: "unknown[]".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
+            // For object literals: `{}`
+            Expr::Object(_) => TypeInfo {
+                field_type: "unknown".to_string(),
+                original_type: "unknown".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
+            // Default to string for other cases
+            _ => TypeInfo {
+                field_type: "string".to_string(),
+                original_type: "string".to_string(),
+                is_object_factory: false,
+                factory_inner_type: None,
+            },
         }
     }
 
