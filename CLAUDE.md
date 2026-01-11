@@ -485,6 +485,75 @@ npm test           # 运行测试
 npm run config:build   # 重新生成 XML 和 TS 代码 和配置
 ```
 
+## 新增功能点开发流程 (TDD)
+
+新增功能点遵循 TDD 驱动开发，每步必须编译通过并验证生成产物。
+
+### 完整流程
+
+```bash
+# ==================== Rust 层开发 ====================
+
+# 1. 编写测试（RED）
+# 在 src/ 对应文件中添加测试
+# → cargo test (确认失败)
+
+# 2. 实现功能（GREEN）
+# 编写最小实现代码
+# → cargo test (确认通过)
+
+# 3. 重构优化（REFACTOR）
+# 在测试保护下重构
+# → cargo test (确保仍通过)
+
+# ==================== 验证生成产物 ====================
+
+# 4. 验证编译和生成
+cargo build --release           # 编译通过
+cargo run -- -c luban-ts/luban.config.toml  # 生成 XML/TS
+
+# ==================== luban-ts 层开发 ====================
+
+# 5. 添加示例和测试
+# 编辑 luban-ts/src/__examples__/xxx.ts
+# 编辑 luban-ts/src/__tests__/xxx.spec.ts
+
+# 6. 验证 TypeScript 层
+cd luban-ts
+npm run config:build            # 重新生成代码
+npm run build                   # 编译通过
+npm test                        # 测试通过
+```
+
+### 快速验证命令
+
+```bash
+# Rust 层
+cargo test                      # 所有测试
+cargo test test_name            # 特定测试
+cargo build --release           # 编译
+
+# luban-ts 层
+cd luban-ts
+npm run config:build            # 生成代码
+npm run build                   # 编译
+npm test                        # 测试
+```
+
+### 关键检查点
+
+每完成一个阶段，必须执行验证：
+
+**Rust 完成时：**
+- [ ] `cargo test` 通过
+- [ ] `cargo build --release` 成功
+- [ ] 生成产物正确
+
+**TypeScript 完成时：**
+- [ ] `npm run config:build` 成功
+- [ ] `npm run build` 成功
+- [ ] `npm test` 通过
+
 ## 开发注意事项
 
 - SWC 的 `TsUnionType` 在新版本中变为 `TsUnionOrIntersectionType::TsUnionType`
