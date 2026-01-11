@@ -74,6 +74,9 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
+          draft: false
+          prerelease: false
+          make_latest: true
           files: |
             artifacts/luban-gen-linux-x64/luban-gen-linux-x64
             artifacts/luban-gen-win32-x64.exe/luban-gen-win32-x64.exe
