@@ -4,7 +4,6 @@ tsconfig = "tsconfig.json"
 [output]
 path = "configs/defines/examples.xml"
 module_name = "examples"
-table_output_path = "src/ts-tables"
 
 # 第一个数据源 - 基础类（TsClass）
 [[sources]]

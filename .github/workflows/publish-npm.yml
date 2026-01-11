@@ -22,6 +22,9 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@white-dragon-bevy'
 
+      - name: Install luban-ts dependencies
+        run: cd luban-ts && npm install
+
       - name: Update version in package.json
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then

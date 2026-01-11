@@ -6,7 +6,6 @@
         <var name="name" type="string!"/>
         <var name="category" type="string#set=weapon,armor,consumable,material"/>
         <var name="stackLimit" type="double#range=[1,999]"/>
-        <var name="aa" type="string" comment="test"/>
     </bean>
 
     <bean name="Skill" alias="技能" parent="TsClass" comment="技能配置">
