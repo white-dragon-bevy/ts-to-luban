@@ -80,12 +80,16 @@ impl<'a> CreatorGenerator<'a> {
             class.fields.iter().map(|f| f.name.as_str()).collect();
 
         // Generate field assignments for parent classes first
-        // Skip fields that are redeclared in the child class
+        // Skip fields that are redeclared in the child class or are virtual fields
         for parent_name in &parent_chain {
             if let Some(parent) = self.all_classes.iter().find(|c| &c.name == parent_name) {
                 for field in &parent.fields {
                     // Skip if this field is redeclared in the child class
                     if !child_field_names.contains(field.name.as_str()) {
+                        // Skip virtual fields (with relocate_tags)
+                        if field.relocate_tags.is_some() {
+                            continue;
+                        }
                         let assignment = self.generate_field_assignment(field);
                         lines.push(format!("    {}", assignment));
                     }
@@ -94,7 +98,11 @@ impl<'a> CreatorGenerator<'a> {
         }
 
         // Then generate field assignments for the current class
+        // Skip virtual fields (with relocate_tags)
         for field in &class.fields {
+            if field.relocate_tags.is_some() {
+                continue;
+            }
             let assignment = self.generate_field_assignment(field);
             lines.push(format!("    {}", assignment));
         }
