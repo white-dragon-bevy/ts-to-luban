@@ -65,15 +65,17 @@ pub fn parse_decorator(decorator: &Decorator) -> Option<ParsedDecorator> {
                 }
             }
 
-            Some(ParsedDecorator { name, args, named_args })
-        }
-        Expr::Ident(ident) => {
             Some(ParsedDecorator {
-                name: ident.sym.to_string(),
-                args: Vec::new(),
-                named_args: std::collections::HashMap::new(),
+                name,
+                args,
+                named_args,
             })
         }
+        Expr::Ident(ident) => Some(ParsedDecorator {
+            name: ident.sym.to_string(),
+            args: Vec::new(),
+            named_args: std::collections::HashMap::new(),
+        }),
         _ => None,
     }
 }

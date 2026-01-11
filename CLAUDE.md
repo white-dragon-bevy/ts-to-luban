@@ -23,6 +23,9 @@ cargo run -- -c luban-ts/luban.config.toml
 # 强制重新生成（忽略缓存）
 cargo run -- -c luban-ts/luban.config.toml -f
 
+# Watch 模式：监控源文件变化并自动重新生成
+cargo run -- -c luban-ts/luban.config.toml -w
+
 # 运行测试
 cargo test
 ```

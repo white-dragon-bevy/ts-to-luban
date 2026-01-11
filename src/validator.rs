@@ -45,13 +45,20 @@ impl<'a> ValidatorGenerator<'a> {
 
     /// Generate container type with size/index validators
     /// e.g., "(list#size=4),Foo" or "(list#index=id),Foo"
-    pub fn generate_container_type(&self, container: &str, element_type: &str, validators: &FieldValidators) -> String {
+    pub fn generate_container_type(
+        &self,
+        container: &str,
+        element_type: &str,
+        validators: &FieldValidators,
+    ) -> String {
         let mut container_mods = Vec::new();
 
         if let Some(size) = &validators.size {
             match size {
                 SizeConstraint::Exact(n) => container_mods.push(format!("size={}", n)),
-                SizeConstraint::Range(min, max) => container_mods.push(format!("size=[{},{}]", min, max)),
+                SizeConstraint::Range(min, max) => {
+                    container_mods.push(format!("size=[{},{}]", min, max))
+                }
             }
         }
 
@@ -62,7 +69,12 @@ impl<'a> ValidatorGenerator<'a> {
         if container_mods.is_empty() {
             format!("{},{}", container, element_type)
         } else {
-            format!("({}#{}),{}", container, container_mods.join(","), element_type)
+            format!(
+                "({}#{}),{}",
+                container,
+                container_mods.join(","),
+                element_type
+            )
         }
     }
 }

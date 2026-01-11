@@ -1,25 +1,27 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rayon::prelude::*;
-use std::path::PathBuf;
-use std::time::Instant;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
+use std::time::{Duration, Instant};
 
-mod config;
-mod tsconfig;
-mod parser;
-mod type_mapper;
-mod generator;
 mod cache;
+mod config;
+mod generator;
+mod parser;
 mod scanner;
 mod ts_generator;
+mod tsconfig;
+mod type_mapper;
 
-use config::{Config, SourceConfig};
-use tsconfig::TsConfig;
-use parser::TsParser;
-use type_mapper::TypeMapper;
-use generator::{XmlGenerator, generate_enum_xml, generate_bean_type_enums_xml};
 use cache::Cache;
+use config::{Config, SourceConfig};
+use generator::{generate_bean_type_enums_xml, generate_enum_xml, XmlGenerator};
+use parser::TsParser;
 use ts_generator::TsCodeGenerator;
+use tsconfig::TsConfig;
+use type_mapper::TypeMapper;
 
 mod table_registry;
 use table_registry::TableRegistry;
@@ -43,25 +45,23 @@ struct Cli {
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
+
+    /// Watch mode: monitor source files for changes and regenerate
+    #[arg(short, long)]
+    watch: bool,
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+/// Run the generation process once
+fn run_generation(
+    cli: &Cli,
+    config: &Config,
+    project_root: &Path,
+    tsconfig: &TsConfig,
+) -> Result<()> {
     let start = Instant::now();
 
     println!("Luban Schema Generator v{}", env!("CARGO_PKG_VERSION"));
     println!("{}", "=".repeat(50));
-
-    // Load configuration with ref_configs merging
-    let config = Config::load_with_refs(&cli.config)
-        .with_context(|| format!("Failed to load config from {:?}", cli.config))?;
-
-    let project_root = cli.config.parent().unwrap_or_else(|| std::path::Path::new("."));
-
-    // Load tsconfig (for path resolution support)
-    let tsconfig_path = project_root.join(&config.project.tsconfig);
-    let tsconfig = TsConfig::load(&tsconfig_path)
-        .with_context(|| format!("Failed to load tsconfig from {:?}", tsconfig_path))?;
 
     // Initialize components
     let type_mapper = TypeMapper::new(&config.type_mappings);
@@ -76,24 +76,51 @@ fn main() -> Result<()> {
     };
 
     // Collect source files and directories with their output paths and module names
-    // Note: paths from ref_configs are already resolved as absolute paths
-    let mut source_dirs: Vec<(PathBuf, scanner::ScanConfig, Option<PathBuf>, Option<String>)> = Vec::new();
+    let mut source_dirs: Vec<(
+        PathBuf,
+        scanner::ScanConfig,
+        Option<PathBuf>,
+        Option<String>,
+    )> = Vec::new();
     let mut single_files: Vec<(PathBuf, Option<PathBuf>, Option<String>)> = Vec::new();
+
     for source in &config.sources {
         match source {
-            SourceConfig::Directory { path, scan_options, output_path, module_name } => {
+            SourceConfig::Directory {
+                path,
+                scan_options,
+                output_path,
+                module_name,
+            } => {
                 let scan_config = scanner::ScanConfig::from(scan_options);
-                let resolved = if path.is_absolute() { path.clone() } else { project_root.join(path) };
+                let resolved = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    project_root.join(path)
+                };
                 if !resolved.exists() {
                     anyhow::bail!("Source directory not found: {:?}", resolved);
                 }
                 if !resolved.is_dir() {
                     anyhow::bail!("Source path is not a directory: {:?}", resolved);
                 }
-                source_dirs.push((resolved, scan_config, output_path.clone(), module_name.clone()));
+                source_dirs.push((
+                    resolved,
+                    scan_config,
+                    output_path.clone(),
+                    module_name.clone(),
+                ));
             }
-            SourceConfig::File { path, output_path, module_name } => {
-                let resolved = if path.is_absolute() { path.clone() } else { project_root.join(path) };
+            SourceConfig::File {
+                path,
+                output_path,
+                module_name,
+            } => {
+                let resolved = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    project_root.join(path)
+                };
                 if !resolved.exists() {
                     anyhow::bail!("Source file not found: {:?}", resolved);
                 }
@@ -102,9 +129,17 @@ fn main() -> Result<()> {
                 }
                 single_files.push((resolved, output_path.clone(), module_name.clone()));
             }
-            SourceConfig::Files { paths, output_path, module_name } => {
+            SourceConfig::Files {
+                paths,
+                output_path,
+                module_name,
+            } => {
                 for path in paths {
-                    let resolved = if path.is_absolute() { path.clone() } else { project_root.join(path) };
+                    let resolved = if path.is_absolute() {
+                        path.clone()
+                    } else {
+                        project_root.join(path)
+                    };
                     if !resolved.exists() {
                         anyhow::bail!("Source file not found: {:?}", resolved);
                     }
@@ -118,9 +153,13 @@ fn main() -> Result<()> {
                 // TODO: Parse registration file
                 println!("  Registration mode not yet implemented: {:?}", path);
             }
-            SourceConfig::Glob { pattern, output_path, module_name } => {
+            SourceConfig::Glob {
+                pattern,
+                output_path,
+                module_name,
+            } => {
                 // Resolve pattern relative to project_root if not already absolute
-                let resolved_pattern = if std::path::Path::new(pattern).is_absolute() {
+                let resolved_pattern = if Path::new(pattern).is_absolute() {
                     pattern.clone()
                 } else {
                     project_root.join(pattern).to_string_lossy().to_string()
@@ -188,7 +227,11 @@ fn main() -> Result<()> {
     let all_classes: Vec<_> = parse_results.iter().flat_map(|(c, _)| c.clone()).collect();
     let all_enums: Vec<_> = parse_results.iter().flat_map(|(_, e)| e.clone()).collect();
 
-    println!("  Extracted {} classes/interfaces, {} enums", all_classes.len(), all_enums.len());
+    println!(
+        "  Extracted {} classes/interfaces, {} enums",
+        all_classes.len(),
+        all_enums.len()
+    );
 
     // First pass: collect @LubanTable classes into registry for ref resolution
     // Use per-source module_name if set, otherwise use default config.output.module_name
@@ -196,13 +239,21 @@ fn main() -> Result<()> {
     let mut table_registry = TableRegistry::new();
     for class in &all_classes {
         if class.luban_table.is_some() {
-            let namespace = class.module_name.as_deref().unwrap_or(default_module_name.as_str());
+            let namespace = class
+                .module_name
+                .as_deref()
+                .unwrap_or(default_module_name.as_str());
             table_registry.register(&class.name, namespace);
         }
     }
     if cli.verbose {
-        println!("  Registered {} tables in registry",
-            all_classes.iter().filter(|c| c.luban_table.is_some()).count());
+        println!(
+            "  Registered {} tables in registry",
+            all_classes
+                .iter()
+                .filter(|c| c.luban_table.is_some())
+                .count()
+        );
     }
 
     // Filter by cache
@@ -242,7 +293,11 @@ fn main() -> Result<()> {
                 if cli.verbose {
                     println!("  [update enum] {}", enum_info.name);
                 }
-                cache.set_entry(&enum_info.name, &enum_info.source_file, &enum_info.file_hash);
+                cache.set_entry(
+                    &enum_info.name,
+                    &enum_info.source_file,
+                    &enum_info.file_hash,
+                );
             }
         })
         .collect();
@@ -257,10 +312,17 @@ fn main() -> Result<()> {
     // Group classes by (output_path, module_name)
     let default_output = config.output.path.clone();
     let default_module = config.output.module_name.clone();
-    let mut grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> = std::collections::HashMap::new();
+    let mut grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> =
+        std::collections::HashMap::new();
     for class in final_classes.iter() {
-        let out_path = class.output_path.clone().unwrap_or_else(|| default_output.clone());
-        let module = class.module_name.clone().unwrap_or_else(|| default_module.clone());
+        let out_path = class
+            .output_path
+            .clone()
+            .unwrap_or_else(|| default_output.clone());
+        let module = class
+            .module_name
+            .clone()
+            .unwrap_or_else(|| default_module.clone());
         grouped.entry((out_path, module)).or_default().push(class);
     }
 
@@ -297,26 +359,42 @@ fn main() -> Result<()> {
     // Generate enum XML if there are enums
     if !final_enums.is_empty() {
         // Group enums by (output_path, module_name)
-        let mut enum_grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> = std::collections::HashMap::new();
+        let mut enum_grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> =
+            std::collections::HashMap::new();
 
         // Default enum output path: use config.output.enum_path or derive from default_output
         let default_enum_output = config.output.enum_path.clone().unwrap_or_else(|| {
-            default_output.with_file_name(
-                format!("{}_enums.xml",
-                    default_output.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default())
-            )
+            default_output.with_file_name(format!(
+                "{}_enums.xml",
+                default_output
+                    .file_stem()
+                    .map(|s| s.to_string_lossy())
+                    .unwrap_or_default()
+            ))
         });
 
         for enum_info in final_enums.iter() {
-            let out_path = enum_info.output_path.clone().map(|p| {
-                // For per-source output_path, add _enums suffix
-                p.with_file_name(
-                    format!("{}_enums.xml",
-                        p.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default())
-                )
-            }).unwrap_or_else(|| default_enum_output.clone());
-            let module = enum_info.module_name.clone().unwrap_or_else(|| default_module.clone());
-            enum_grouped.entry((out_path, module)).or_default().push(enum_info);
+            let out_path = enum_info
+                .output_path
+                .clone()
+                .map(|p| {
+                    // For per-source output_path, add _enums suffix
+                    p.with_file_name(format!(
+                        "{}_enums.xml",
+                        p.file_stem()
+                            .map(|s| s.to_string_lossy())
+                            .unwrap_or_default()
+                    ))
+                })
+                .unwrap_or_else(|| default_enum_output.clone());
+            let module = enum_info
+                .module_name
+                .clone()
+                .unwrap_or_else(|| default_module.clone());
+            enum_grouped
+                .entry((out_path, module))
+                .or_default()
+                .push(enum_info);
         }
 
         for ((out_path, module_name), enums) in &enum_grouped {
@@ -344,10 +422,19 @@ fn main() -> Result<()> {
     // Generate bean type enums XML if configured (grouped by parent)
     if let Some(bean_types_path) = &config.output.bean_types_path {
         // Collect beans with their extends (parent), aliases, and comments
-        let beans_with_parents: Vec<(&str, String, Option<&str>, Option<&str>)> = final_classes.iter()
-            .map(|c| (c.name.as_str(), c.extends.clone().unwrap_or_default(), c.alias.as_deref(), c.comment.as_deref()))
+        let beans_with_parents: Vec<(&str, String, Option<&str>, Option<&str>)> = final_classes
+            .iter()
+            .map(|c| {
+                (
+                    c.name.as_str(),
+                    c.extends.clone().unwrap_or_default(),
+                    c.alias.as_deref(),
+                    c.comment.as_deref(),
+                )
+            })
             .collect();
-        let beans_refs: Vec<(&str, &str, Option<&str>, Option<&str>)> = beans_with_parents.iter()
+        let beans_refs: Vec<(&str, &str, Option<&str>, Option<&str>)> = beans_with_parents
+            .iter()
             .map(|(name, parent, alias, comment)| (*name, parent.as_str(), *alias, *comment))
             .collect();
 
@@ -375,11 +462,8 @@ fn main() -> Result<()> {
         println!("\n[5/5] Generating TypeScript table code...");
 
         let resolved_path = project_root.join(table_output_path);
-        let ts_generator = TsCodeGenerator::new(
-            resolved_path.clone(),
-            final_classes.clone(),
-            &tsconfig,
-        );
+        let ts_generator =
+            TsCodeGenerator::new(resolved_path.clone(), final_classes.clone(), tsconfig);
 
         ts_generator.generate()?;
         println!("  Written TypeScript tables to {:?}", resolved_path);
@@ -390,8 +474,191 @@ fn main() -> Result<()> {
 
     let elapsed = start.elapsed();
     println!("\n{}", "=".repeat(50));
-    println!("Done! Generated {} beans, {} enums to {} file(s) in {:?}",
-        final_classes.len(), final_enums.len(), grouped.len(), elapsed);
+    println!(
+        "Done! Generated {} beans, {} enums to {} file(s) in {:?}",
+        final_classes.len(),
+        final_enums.len(),
+        grouped.len(),
+        elapsed
+    );
 
     Ok(())
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // Load configuration with ref_configs merging
+    let config = Config::load_with_refs(&cli.config)
+        .with_context(|| format!("Failed to load config from {:?}", cli.config))?;
+
+    let project_root = cli
+        .config
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+
+    // Load tsconfig (for path resolution support)
+    let tsconfig_path = project_root.join(&config.project.tsconfig);
+    let tsconfig = TsConfig::load(&tsconfig_path)
+        .with_context(|| format!("Failed to load tsconfig from {:?}", tsconfig_path))?;
+
+    // Run generation once if not in watch mode
+    if !cli.watch {
+        run_generation(&cli, &config, project_root, &tsconfig)?;
+        return Ok(());
+    }
+
+    // Watch mode: monitor source files for changes and regenerate
+    println!("Watch mode enabled. Monitoring for changes...");
+    println!("Press Ctrl+C to stop.\n");
+
+    // Collect paths to watch
+    let mut watch_paths: Vec<PathBuf> = Vec::new();
+    for source in &config.sources {
+        match source {
+            SourceConfig::Directory { path, .. } => {
+                let resolved = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    project_root.join(path)
+                };
+                watch_paths.push(resolved);
+            }
+            SourceConfig::File { path, .. } => {
+                let resolved = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    project_root.join(path)
+                };
+                // Watch parent directory for single files
+                if let Some(parent) = resolved.parent() {
+                    if !watch_paths.contains(&parent.to_path_buf()) {
+                        watch_paths.push(parent.to_path_buf());
+                    }
+                }
+            }
+            SourceConfig::Files { paths, .. } => {
+                for path in paths {
+                    let resolved = if path.is_absolute() {
+                        path.clone()
+                    } else {
+                        project_root.join(path)
+                    };
+                    // Watch parent directory for single files
+                    if let Some(parent) = resolved.parent() {
+                        if !watch_paths.contains(&parent.to_path_buf()) {
+                            watch_paths.push(parent.to_path_buf());
+                        }
+                    }
+                }
+            }
+            SourceConfig::Glob { pattern, .. } => {
+                // Expand glob to get initial files
+                let resolved_pattern = if Path::new(pattern).is_absolute() {
+                    pattern.clone()
+                } else {
+                    project_root.join(pattern).to_string_lossy().to_string()
+                };
+                if let Ok(files) = scanner::expand_glob(&resolved_pattern) {
+                    for file in files {
+                        if let Some(parent) = file.parent() {
+                            if !watch_paths.contains(&parent.to_path_buf()) {
+                                watch_paths.push(parent.to_path_buf());
+                            }
+                        }
+                    }
+                }
+            }
+            SourceConfig::Registration { .. } => {
+                // Registration mode not implemented, skip
+            }
+        }
+    }
+
+    // Deduplicate watch paths
+    watch_paths.sort();
+    watch_paths.dedup();
+    watch_paths.retain(|p| p.exists());
+
+    if watch_paths.is_empty() {
+        println!("No valid paths to watch. Exiting.");
+        return Ok(());
+    }
+
+    println!("Watching paths:");
+    for path in &watch_paths {
+        println!("  {}", path.display());
+    }
+    println!();
+
+    // Create channel for file system events
+    let (tx, rx) = channel();
+
+    // Create watcher
+    let mut watcher: RecommendedWatcher = Watcher::new(
+        move |res: Result<Event, notify::Error>| {
+            if let Ok(event) = res {
+                if let Err(e) = tx.send(event) {
+                    eprintln!("Failed to send file event: {}", e);
+                }
+            }
+        },
+        notify::Config::default(),
+    )?;
+
+    // Watch all paths
+    for path in &watch_paths {
+        watcher.watch(path, RecursiveMode::Recursive)?;
+    }
+
+    // Debounce delay (in milliseconds)
+    const DEBOUNCE_MS: u64 = 300;
+
+    // Event loop with debouncing
+    let mut last_change_time = Instant::now();
+    let mut pending_generation = false;
+
+    loop {
+        // Check for file events
+        if let Ok(event) = rx.recv_timeout(Duration::from_millis(100)) {
+            // Filter for relevant events (create, modify, remove, rename)
+            if matches!(
+                event.kind,
+                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) | EventKind::Any
+            ) {
+                // Only care about TypeScript files
+                if event.paths.iter().any(|p| {
+                    p.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|ext| ext == "ts" || ext == "mts" || ext == "cts")
+                        .unwrap_or(false)
+                }) {
+                    let now = Instant::now();
+                    let elapsed = now.duration_since(last_change_time).as_millis() as u64;
+
+                    if elapsed >= DEBOUNCE_MS {
+                        // Debounce period passed, regenerate
+                        pending_generation = true;
+                        last_change_time = now;
+                    } else {
+                        // Reset the timer (debounce)
+                        last_change_time = now;
+                    }
+                }
+            }
+        }
+
+        // Perform generation if pending and debounce period passed
+        if pending_generation {
+            let elapsed = last_change_time.elapsed().as_millis() as u64;
+            if elapsed >= DEBOUNCE_MS {
+                println!("\nChanges detected, regenerating...");
+                if let Err(e) = run_generation(&cli, &config, project_root, &tsconfig) {
+                    eprintln!("Error during generation: {}", e);
+                }
+                println!("\nWatching for changes (press Ctrl+C to stop)...\n");
+                pending_generation = false;
+            }
+        }
+    }
 }

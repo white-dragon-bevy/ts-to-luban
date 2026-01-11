@@ -1,8 +1,8 @@
+use crate::config::ScanOptions;
+use anyhow::Result;
+use glob::glob;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use glob::glob;
-use anyhow::Result;
-use crate::config::ScanOptions;
 
 #[derive(Default)]
 pub struct ScanConfig {
@@ -38,9 +38,7 @@ pub fn scan_directory_with_options(dir: &Path, config: &ScanConfig) -> Result<Ve
             continue;
         }
 
-        let file_name = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
         // Include .ts and .tsx files
         if !file_name.ends_with(".ts") && !file_name.ends_with(".tsx") {
@@ -62,7 +60,9 @@ pub fn scan_directory_with_options(dir: &Path, config: &ScanConfig) -> Result<Ve
         }
 
         // Exclude node_modules unless configured
-        if !config.include_node_modules && path.components().any(|c| c.as_os_str() == "node_modules") {
+        if !config.include_node_modules
+            && path.components().any(|c| c.as_os_str() == "node_modules")
+        {
             continue;
         }
 
@@ -108,8 +108,8 @@ pub fn expand_glob(pattern: &str) -> Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_scan_directory() {
@@ -165,7 +165,11 @@ mod tests {
         let sub = dir.path().join("src");
         fs::create_dir(&sub).unwrap();
 
-        fs::write(sub.join("DamageTrigger.ts"), "export class DamageTrigger {}").unwrap();
+        fs::write(
+            sub.join("DamageTrigger.ts"),
+            "export class DamageTrigger {}",
+        )
+        .unwrap();
         fs::write(sub.join("HealTrigger.ts"), "export class HealTrigger {}").unwrap();
         fs::write(sub.join("Component.ts"), "export class Component {}").unwrap();
 
@@ -176,7 +180,12 @@ mod tests {
 
         // All files should end with Trigger.ts
         for file in &files {
-            assert!(file.file_name().unwrap().to_str().unwrap().ends_with("Trigger.ts"));
+            assert!(file
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .ends_with("Trigger.ts"));
         }
     }
 

@@ -1,8 +1,8 @@
-use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators};
 use crate::parser::field_info::SizeConstraint;
-use crate::type_mapper::TypeMapper;
-use crate::table_registry::TableRegistry;
+use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators};
 use crate::table_mapping::TableMappingResolver;
+use crate::table_registry::TableRegistry;
+use crate::type_mapper::TypeMapper;
 
 pub struct XmlGenerator<'a> {
     type_mapper: &'a TypeMapper,
@@ -16,13 +16,20 @@ impl<'a> XmlGenerator<'a> {
         table_registry: &'a TableRegistry,
         table_mapping_resolver: &'a TableMappingResolver,
     ) -> Self {
-        Self { type_mapper, table_registry, table_mapping_resolver }
+        Self {
+            type_mapper,
+            table_registry,
+            table_mapping_resolver,
+        }
     }
 
     pub fn generate(&self, classes: &[ClassInfo], module_name: &str) -> String {
         let mut lines = vec![
             r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
-            format!(r#"<module name="{}" comment="自动生成的 ts class Bean 定义">"#, escape_xml(module_name)),
+            format!(
+                r#"<module name="{}" comment="自动生成的 ts class Bean 定义">"#,
+                escape_xml(module_name)
+            ),
             String::new(),
         ];
 
@@ -33,9 +40,7 @@ impl<'a> XmlGenerator<'a> {
         }
 
         // Generate tables for @LubanTable classes
-        let luban_tables: Vec<_> = classes.iter()
-            .filter(|c| c.luban_table.is_some())
-            .collect();
+        let luban_tables: Vec<_> = classes.iter().filter(|c| c.luban_table.is_some()).collect();
 
         if !luban_tables.is_empty() {
             lines.push("    <!-- 数据表配置 -->".to_string());
@@ -53,12 +58,15 @@ impl<'a> XmlGenerator<'a> {
         let config = class.luban_table.as_ref().unwrap();
 
         // Resolve input/output from table_mappings config
-        let (input, output) = self.table_mapping_resolver
+        let (input, output) = self
+            .table_mapping_resolver
             .resolve(&class.name)
-            .unwrap_or_else(|| panic!(
-                "Error: No table_mapping for class '{}'. Add [[table_mappings]] in config.",
-                class.name
-            ));
+            .unwrap_or_else(|| {
+                panic!(
+                    "Error: No table_mapping for class '{}'. Add [[table_mappings]] in config.",
+                    class.name
+                )
+            });
 
         let table_name = format!("{}Table", class.name);
 
@@ -88,11 +96,15 @@ impl<'a> XmlGenerator<'a> {
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo, all_classes: &[ClassInfo]) {
         let parent = class.extends.clone().unwrap_or_default();
 
-        let alias_attr = class.alias.as_ref()
+        let alias_attr = class
+            .alias
+            .as_ref()
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
-        let comment_attr = class.comment.as_ref()
+        let comment_attr = class
+            .comment
+            .as_ref()
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
@@ -155,7 +167,9 @@ impl<'a> XmlGenerator<'a> {
             self.apply_scalar_validators(&mapped_type, validators, field.is_optional)
         };
 
-        let comment_attr = field.comment.as_ref()
+        let comment_attr = field
+            .comment
+            .as_ref()
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
@@ -167,7 +181,12 @@ impl<'a> XmlGenerator<'a> {
 
     /// Apply validators to scalar types
     /// e.g., "int" -> "int!#ref=examples.TbItem#range=[1,100]"
-    fn apply_scalar_validators(&self, base_type: &str, validators: &FieldValidators, is_optional: bool) -> String {
+    fn apply_scalar_validators(
+        &self,
+        base_type: &str,
+        validators: &FieldValidators,
+        is_optional: bool,
+    ) -> String {
         let mut result = base_type.to_string();
 
         // Add optional marker
@@ -215,7 +234,11 @@ impl<'a> XmlGenerator<'a> {
 
     /// Apply validators to container types
     /// e.g., "list,int" -> "(list#size=4#index=id),int#ref=TbItem"
-    fn apply_container_validators(&self, container_type: &str, validators: &FieldValidators) -> String {
+    fn apply_container_validators(
+        &self,
+        container_type: &str,
+        validators: &FieldValidators,
+    ) -> String {
         // Parse container type: "list,ElementType" or "map,KeyType,ValueType"
         let parts: Vec<&str> = container_type.splitn(2, ',').collect();
         if parts.len() < 2 {
@@ -231,7 +254,9 @@ impl<'a> XmlGenerator<'a> {
         if let Some(size) = &validators.size {
             match size {
                 SizeConstraint::Exact(n) => container_mods.push(format!("size={}", n)),
-                SizeConstraint::Range(min, max) => container_mods.push(format!("size=[{},{}]", min, max)),
+                SizeConstraint::Range(min, max) => {
+                    container_mods.push(format!("size=[{},{}]", min, max))
+                }
             }
         }
 
@@ -251,12 +276,18 @@ impl<'a> XmlGenerator<'a> {
             nominal: validators.nominal,
         };
 
-        let element_with_validators = self.apply_scalar_validators(element_type, &element_validators, false);
+        let element_with_validators =
+            self.apply_scalar_validators(element_type, &element_validators, false);
 
         if container_mods.is_empty() {
             format!("{},{}", container, element_with_validators)
         } else {
-            format!("({}#{}),{}", container, container_mods.join("#"), element_with_validators)
+            format!(
+                "({}#{}),{}",
+                container,
+                container_mods.join("#"),
+                element_with_validators
+            )
         }
     }
 }
@@ -283,7 +314,10 @@ fn format_number(n: f64) -> String {
 pub fn generate_enum_xml(enums: &[EnumInfo], module_name: &str) -> String {
     let mut lines = vec![
         r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
-        format!(r#"<module name="{}" comment="自动生成的 ts enum 定义">"#, escape_xml(module_name)),
+        format!(
+            r#"<module name="{}" comment="自动生成的 ts enum 定义">"#,
+            escape_xml(module_name)
+        ),
         String::new(),
     ];
 
@@ -297,7 +331,9 @@ pub fn generate_enum_xml(enums: &[EnumInfo], module_name: &str) -> String {
 }
 
 fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
-    let alias_attr = enum_info.alias.as_ref()
+    let alias_attr = enum_info
+        .alias
+        .as_ref()
         .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
         .unwrap_or_default();
 
@@ -307,7 +343,9 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
         String::new()
     };
 
-    let comment_attr = enum_info.comment.as_ref()
+    let comment_attr = enum_info
+        .comment
+        .as_ref()
         .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
         .unwrap_or_default();
 
@@ -323,17 +361,24 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
     ));
 
     for variant in &enum_info.variants {
-        let var_alias_attr = variant.alias.as_ref()
+        let var_alias_attr = variant
+            .alias
+            .as_ref()
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
-        let var_comment_attr = variant.comment.as_ref()
+        let var_comment_attr = variant
+            .comment
+            .as_ref()
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
         lines.push(format!(
             r#"        <var name="{}" value="{}"{}{}/>"#,
-            variant.name, escape_xml(&variant.value), var_alias_attr, var_comment_attr
+            variant.name,
+            escape_xml(&variant.value),
+            var_alias_attr,
+            var_comment_attr
         ));
     }
 
@@ -348,20 +393,30 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
 /// - comment from bean is included if present
 /// - Beans without parent are excluded
 /// Input: (bean_name, parent, alias, comment)
-pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&str>, Option<&str>)], module_name: &str) -> String {
+pub fn generate_bean_type_enums_xml(
+    beans_with_parents: &[(&str, &str, Option<&str>, Option<&str>)],
+    module_name: &str,
+) -> String {
     use std::collections::HashMap;
 
     // Group beans by parent: parent -> [(bean_name, alias, comment)]
-    let mut parent_to_beans: HashMap<&str, Vec<(&str, Option<&str>, Option<&str>)>> = HashMap::new();
+    let mut parent_to_beans: HashMap<&str, Vec<(&str, Option<&str>, Option<&str>)>> =
+        HashMap::new();
     for (bean_name, parent, alias, comment) in beans_with_parents {
         if !parent.is_empty() {
-            parent_to_beans.entry(parent).or_default().push((bean_name, *alias, *comment));
+            parent_to_beans
+                .entry(parent)
+                .or_default()
+                .push((bean_name, *alias, *comment));
         }
     }
 
     let mut lines = vec![
         r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
-        format!(r#"<module name="{}" comment="自动生成的 bean 类型枚举">"#, escape_xml(module_name)),
+        format!(
+            r#"<module name="{}" comment="自动生成的 bean 类型枚举">"#,
+            escape_xml(module_name)
+        ),
         String::new(),
     ];
 
@@ -390,7 +445,11 @@ pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&s
             lines.push(format!(
                 r#"        <var name="{}"{}value="{}"{}/>"#,
                 bean_name,
-                if alias_attr.is_empty() { " ".to_string() } else { format!("{} ", alias_attr) },
+                if alias_attr.is_empty() {
+                    " ".to_string()
+                } else {
+                    format!("{} ", alias_attr)
+                },
                 bean_name,
                 comment_attr
             ));
@@ -405,12 +464,11 @@ pub fn generate_bean_type_enums_xml(beans_with_parents: &[(&str, &str, Option<&s
 }
 
 /// Generate a single <table> element for a class with @LubanTable decorator
-pub fn generate_table(
-    class: &ClassInfo,
-    input: &str,
-    output: &str,
-) -> String {
-    let config = class.luban_table.as_ref().expect("Class must have @LubanTable");
+pub fn generate_table(class: &ClassInfo, input: &str, output: &str) -> String {
+    let config = class
+        .luban_table
+        .as_ref()
+        .expect("Class must have @LubanTable");
 
     let mut attrs = vec![
         format!(r#"name="{}""#, class.name),
@@ -464,18 +522,16 @@ mod tests {
             name: "MyClass".to_string(),
             comment: Some("Test class".to_string()),
             alias: None,
-            fields: vec![
-                FieldInfo {
-                    name: "name".to_string(),
-                    field_type: "string".to_string(),
-                    comment: Some("Name field".to_string()),
-                    is_optional: false,
-                    validators: FieldValidators::default(),
-                    is_object_factory: false,
-                    factory_inner_type: None,
-                    original_type: "string".to_string(),
-                },
-            ],
+            fields: vec![FieldInfo {
+                name: "name".to_string(),
+                field_type: "string".to_string(),
+                comment: Some("Name field".to_string()),
+                is_optional: false,
+                validators: FieldValidators::default(),
+                is_object_factory: false,
+                factory_inner_type: None,
+                original_type: "string".to_string(),
+            }],
             implements: vec![],
             extends: Some("BaseClass".to_string()),
             source_file: "test.ts".to_string(),
@@ -602,8 +658,8 @@ mod tests {
             variants: vec![
                 EnumVariant {
                     name: "Role".to_string(),
-                    alias: None,  // No @alias tag
-                    value: "role".to_string(),  // Original string value
+                    alias: None,               // No @alias tag
+                    value: "role".to_string(), // Original string value
                     comment: Some("角色".to_string()),
                 },
                 EnumVariant {
@@ -639,7 +695,7 @@ mod tests {
             variants: vec![
                 EnumVariant {
                     name: "Attack".to_string(),
-                    alias: None,  // No @alias tag
+                    alias: None, // No @alias tag
                     value: "1".to_string(),
                     comment: Some("攻击技能".to_string()),
                 },
@@ -678,7 +734,7 @@ mod tests {
             variants: vec![
                 EnumVariant {
                     name: "CAN_MOVE".to_string(),
-                    alias: Some("移动".to_string()),  // Has @alias tag
+                    alias: Some("移动".to_string()), // Has @alias tag
                     value: "1".to_string(),
                     comment: Some("可以移动".to_string()),
                 },
@@ -700,6 +756,8 @@ mod tests {
         assert!(xml.contains(r#"<enum name="UnitFlag" flags="true" comment="权限控制">"#));
         // Should have alias attribute (from @alias tag)
         assert!(xml.contains(r#"<var name="CAN_MOVE" value="1" alias="移动" comment="可以移动"/>"#));
-        assert!(xml.contains(r#"<var name="CAN_ATTACK" value="2" alias="攻击" comment="可以攻击"/>"#));
+        assert!(
+            xml.contains(r#"<var name="CAN_ATTACK" value="2" alias="攻击" comment="可以攻击"/>"#)
+        );
     }
 }

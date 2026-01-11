@@ -23,6 +23,7 @@ export function createBean<T>(name: string, json: unknown): T {
 export function createByType<T>(typeName: string, json: unknown): T {
     return createBean<T>(typeName, json);
 }
-"#.to_string()
+"#
+        .to_string()
     }
 }

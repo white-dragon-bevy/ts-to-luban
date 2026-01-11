@@ -30,6 +30,11 @@ export class Item {
 
     @Range(1, 999)
     public stackLimit: number;
+
+    /**
+     * test
+     */
+    public aa:string
 }
 
 /**

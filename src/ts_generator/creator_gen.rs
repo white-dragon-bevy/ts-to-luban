@@ -1,8 +1,8 @@
-use crate::parser::{ClassInfo, FieldInfo};
 use super::import_resolver::ImportResolver;
 use super::to_kebab_case;
-use std::path::Path;
+use crate::parser::{ClassInfo, FieldInfo};
 use std::collections::HashSet;
+use std::path::Path;
 
 pub struct CreatorGenerator<'a> {
     import_resolver: &'a ImportResolver,
@@ -11,15 +11,22 @@ pub struct CreatorGenerator<'a> {
 
 impl<'a> CreatorGenerator<'a> {
     pub fn new(import_resolver: &'a ImportResolver, all_classes: &'a [ClassInfo]) -> Self {
-        Self { import_resolver, all_classes }
+        Self {
+            import_resolver,
+            all_classes,
+        }
     }
 
     /// Generate creator file content for a class
     pub fn generate(&self, class: &ClassInfo, output_file: &Path) -> String {
-        let import_path = self.import_resolver.resolve(output_file, Path::new(&class.source_file));
+        let import_path = self
+            .import_resolver
+            .resolve(output_file, Path::new(&class.source_file));
 
         // Collect nested bean types used in fields
-        let nested_beans: HashSet<String> = class.fields.iter()
+        let nested_beans: HashSet<String> = class
+            .fields
+            .iter()
             .filter(|f| !f.is_object_factory && self.is_bean_type(&f.original_type))
             .map(|f| self.extract_bean_name(&f.original_type))
             .filter(|name| name != &class.name) // Don't import self
@@ -33,16 +40,26 @@ impl<'a> CreatorGenerator<'a> {
 
         // Add imports for nested bean types from their creator files
         for bean_name in &nested_beans {
-            lines.push(format!("import {{ {} }} from \"./{}\";", bean_name, to_kebab_case(bean_name)));
+            lines.push(format!(
+                "import {{ {} }} from \"./{}\";",
+                bean_name,
+                to_kebab_case(bean_name)
+            ));
         }
 
         lines.push(String::new());
         // Re-export the class for consumers
-        lines.push(format!("export {{ {} }} from \"{}\";", class.name, import_path));
+        lines.push(format!(
+            "export {{ {} }} from \"{}\";",
+            class.name, import_path
+        ));
         lines.push(String::new());
 
         // Generate creator function
-        lines.push(format!("export function create{}(json: unknown): {} {{", class.name, class.name));
+        lines.push(format!(
+            "export function create{}(json: unknown): {} {{",
+            class.name, class.name
+        ));
         lines.push(format!("    const obj = new {}();", class.name));
 
         // Collect parent class names in inheritance chain (from top to bottom)
@@ -59,7 +76,8 @@ impl<'a> CreatorGenerator<'a> {
         parent_chain.reverse(); // Reverse to get top-level parent first
 
         // Collect child class field names to check for redeclarations
-        let child_field_names: HashSet<&str> = class.fields.iter().map(|f| f.name.as_str()).collect();
+        let child_field_names: HashSet<&str> =
+            class.fields.iter().map(|f| f.name.as_str()).collect();
 
         // Generate field assignments for parent classes first
         // Skip fields that are redeclared in the child class
@@ -98,7 +116,9 @@ impl<'a> CreatorGenerator<'a> {
             } else {
                 format!("obj.{} = (() => {{ const data = (json as Record<string, unknown>).{} as Record<string, unknown>; return () => createBean(data.$type as string, data); }})();", name, name)
             }
-        } else if !self.is_bean_type(&field.original_type) && (field.original_type.ends_with("[]") || field.original_type.starts_with("list,")) {
+        } else if !self.is_bean_type(&field.original_type)
+            && (field.original_type.ends_with("[]") || field.original_type.starts_with("list,"))
+        {
             // Primitive array type - use 'in' operator
             format!("obj.{} = \"{}\" in (json as Record<string, unknown>) ? (json as Record<string, unknown>).{} as {} : [];", name, name, name, self.ts_type_for_field(&field.original_type))
         } else if self.is_bean_type(&field.original_type) {
@@ -108,11 +128,19 @@ impl<'a> CreatorGenerator<'a> {
                 // Use 'in' operator to check if property exists
                 format!("obj.{} = \"{}\" in (json as Record<string, unknown>) ? ((json as Record<string, unknown>).{} as defined[]).map(item => createBean<{}>(\"{}\", item)) : [];", name, name, name, bean_name, bean_name)
             } else {
-                format!("obj.{} = createBean<{}>(\"{}\", (json as Record<string, unknown>).{});", name, bean_name, bean_name, name)
+                format!(
+                    "obj.{} = createBean<{}>(\"{}\", (json as Record<string, unknown>).{});",
+                    name, bean_name, bean_name, name
+                )
             }
         } else {
             // Primitive type
-            format!("obj.{} = (json as Record<string, unknown>).{} as {};", name, name, self.ts_type_for_field(&field.original_type))
+            format!(
+                "obj.{} = (json as Record<string, unknown>).{} as {};",
+                name,
+                name,
+                self.ts_type_for_field(&field.original_type)
+            )
         }
     }
 

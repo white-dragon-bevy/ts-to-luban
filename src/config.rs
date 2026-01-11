@@ -77,12 +77,13 @@ pub enum SourceConfig {
         #[serde(default)]
         module_name: Option<String>,
     },
-    Registration { path: PathBuf },
+    Registration {
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Deserialize, Default)]
-pub struct DefaultsConfig {
-}
+pub struct DefaultsConfig {}
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct ScanOptions {
@@ -122,8 +123,9 @@ impl Config {
             let ref_path = ref_path.canonicalize().unwrap_or(ref_path.clone());
 
             // Recursively load referenced config
-            let referenced = Self::load_with_refs(&ref_path)
-                .map_err(|e| anyhow::anyhow!("Failed to load ref_config {:?}: {}", ref_config.path, e))?;
+            let referenced = Self::load_with_refs(&ref_path).map_err(|e| {
+                anyhow::anyhow!("Failed to load ref_config {:?}: {}", ref_config.path, e)
+            })?;
             let ref_dir = ref_path.parent().unwrap_or(std::path::Path::new("."));
 
             // Merge sources with resolved paths
@@ -140,7 +142,12 @@ impl Config {
     /// Note: output_path is NOT resolved - it uses the runtime root directory
     fn resolve_source_path(source: SourceConfig, base_dir: &std::path::Path) -> SourceConfig {
         match source {
-            SourceConfig::Directory { path, scan_options, output_path, module_name } => {
+            SourceConfig::Directory {
+                path,
+                scan_options,
+                output_path,
+                module_name,
+            } => {
                 let resolved = if path.is_absolute() {
                     path
                 } else {
@@ -153,15 +160,27 @@ impl Config {
                     module_name,
                 }
             }
-            SourceConfig::File { path, output_path, module_name } => {
+            SourceConfig::File {
+                path,
+                output_path,
+                module_name,
+            } => {
                 let resolved = if path.is_absolute() {
                     path
                 } else {
                     base_dir.join(&path)
                 };
-                SourceConfig::File { path: resolved, output_path, module_name }
+                SourceConfig::File {
+                    path: resolved,
+                    output_path,
+                    module_name,
+                }
             }
-            SourceConfig::Files { paths, output_path, module_name } => {
+            SourceConfig::Files {
+                paths,
+                output_path,
+                module_name,
+            } => {
                 let resolved_paths = paths
                     .into_iter()
                     .map(|p| {
@@ -186,7 +205,11 @@ impl Config {
                 };
                 SourceConfig::Registration { path: resolved }
             }
-            SourceConfig::Glob { pattern, output_path, module_name } => {
+            SourceConfig::Glob {
+                pattern,
+                output_path,
+                module_name,
+            } => {
                 // Prepend base_dir to the pattern for relative patterns
                 let resolved_pattern = if std::path::Path::new(&pattern).is_absolute() {
                     pattern
@@ -241,8 +264,14 @@ Vector3 = "Vector3"
 Entity = "long"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.type_mappings.get("Vector3"), Some(&"Vector3".to_string()));
-        assert_eq!(config.type_mappings.get("Entity"), Some(&"long".to_string()));
+        assert_eq!(
+            config.type_mappings.get("Vector3"),
+            Some(&"Vector3".to_string())
+        );
+        assert_eq!(
+            config.type_mappings.get("Entity"),
+            Some(&"long".to_string())
+        );
     }
 
     #[test]
@@ -262,13 +291,20 @@ path = "../another-pkg/ts-luban.config.toml"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.ref_configs.len(), 2);
-        assert_eq!(config.ref_configs[0].path, PathBuf::from("../other-pkg/ts-luban.config.toml"));
-        assert_eq!(config.ref_configs[1].path, PathBuf::from("../another-pkg/ts-luban.config.toml"));
+        assert_eq!(
+            config.ref_configs[0].path,
+            PathBuf::from("../other-pkg/ts-luban.config.toml")
+        );
+        assert_eq!(
+            config.ref_configs[1].path,
+            PathBuf::from("../another-pkg/ts-luban.config.toml")
+        );
     }
 
     #[test]
     fn test_load_with_refs_merges_sources() {
-        let config_path = PathBuf::from("tests/fixtures/ref_config_test/pkg-a/ts-luban.config.toml");
+        let config_path =
+            PathBuf::from("tests/fixtures/ref_config_test/pkg-a/ts-luban.config.toml");
         let config = Config::load_with_refs(&config_path).unwrap();
 
         // Should have 2 sources: one from pkg-a (local-src) and one from pkg-b (src)
@@ -282,7 +318,10 @@ path = "../another-pkg/ts-luban.config.toml"
                 false
             }
         });
-        assert!(has_pkg_b_source, "Should have pkg-b source with resolved path");
+        assert!(
+            has_pkg_b_source,
+            "Should have pkg-b source with resolved path"
+        );
     }
 
     #[test]
@@ -302,12 +341,18 @@ output_path = "output/types.xml"
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.sources.len(), 1);
 
-        if let SourceConfig::Files { paths, output_path, .. } = &config.sources[0] {
+        if let SourceConfig::Files {
+            paths, output_path, ..
+        } = &config.sources[0]
+        {
             assert_eq!(paths.len(), 3);
             assert_eq!(paths[0], PathBuf::from("src/types/a.ts"));
             assert_eq!(paths[1], PathBuf::from("src/types/b.ts"));
             assert_eq!(paths[2], PathBuf::from("src/events/c.ts"));
-            assert_eq!(output_path.as_ref().unwrap(), &PathBuf::from("output/types.xml"));
+            assert_eq!(
+                output_path.as_ref().unwrap(),
+                &PathBuf::from("output/types.xml")
+            );
         } else {
             panic!("Expected Files source");
         }
@@ -399,7 +444,10 @@ path = "src/events"
 
         // First source has custom output_path
         if let SourceConfig::Directory { output_path, .. } = &config.sources[0] {
-            assert_eq!(output_path.as_ref().unwrap(), &PathBuf::from("output/triggers.xml"));
+            assert_eq!(
+                output_path.as_ref().unwrap(),
+                &PathBuf::from("output/triggers.xml")
+            );
         } else {
             panic!("Expected Directory source");
         }
@@ -428,7 +476,12 @@ pattern = "src/**/*Trigger.ts"
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.sources.len(), 1);
 
-        if let SourceConfig::Glob { pattern, output_path, module_name } = &config.sources[0] {
+        if let SourceConfig::Glob {
+            pattern,
+            output_path,
+            module_name,
+        } = &config.sources[0]
+        {
             assert_eq!(pattern, "src/**/*Trigger.ts");
             assert!(output_path.is_none());
             assert!(module_name.is_none());
@@ -455,9 +508,17 @@ module_name = "matched"
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.sources.len(), 1);
 
-        if let SourceConfig::Glob { pattern, output_path, module_name } = &config.sources[0] {
+        if let SourceConfig::Glob {
+            pattern,
+            output_path,
+            module_name,
+        } = &config.sources[0]
+        {
             assert_eq!(pattern, "src/**/*.ts");
-            assert_eq!(output_path.as_ref().unwrap(), &PathBuf::from("output/matched.xml"));
+            assert_eq!(
+                output_path.as_ref().unwrap(),
+                &PathBuf::from("output/matched.xml")
+            );
             assert_eq!(module_name.as_deref(), Some("matched"));
         } else {
             panic!("Expected Glob source");
@@ -494,7 +555,9 @@ path = "output.xml"
 table_output_path = "out/tables"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.output.table_output_path, Some(PathBuf::from("out/tables")));
+        assert_eq!(
+            config.output.table_output_path,
+            Some(PathBuf::from("out/tables"))
+        );
     }
-
 }

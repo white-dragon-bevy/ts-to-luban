@@ -1,6 +1,6 @@
-use std::path::Path;
-use std::collections::HashMap;
 use crate::tsconfig::TsConfig;
+use std::collections::HashMap;
+use std::path::Path;
 
 pub struct ImportResolver {
     /// tsconfig paths mapping

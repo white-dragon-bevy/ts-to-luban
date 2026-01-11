@@ -43,7 +43,10 @@ impl TypeMapper {
         m.insert("assetpath".to_string(), "string".to_string());
 
         // Cast system types
-        m.insert("castactiontarget".to_string(), "CastActionTarget".to_string());
+        m.insert(
+            "castactiontarget".to_string(),
+            "CastActionTarget".to_string(),
+        );
         m.insert("castcontext".to_string(), "CastContext".to_string());
 
         m
@@ -112,6 +115,9 @@ mod tests {
     fn test_map_full_type() {
         let mapper = TypeMapper::new(&HashMap::new());
         assert_eq!(mapper.map_full_type("list,number"), "list,double");
-        assert_eq!(mapper.map_full_type("map,string,number"), "map,string,double");
+        assert_eq!(
+            mapper.map_full_type("map,string,number"),
+            "map,string,double"
+        );
     }
 }

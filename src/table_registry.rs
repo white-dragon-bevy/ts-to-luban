@@ -35,12 +35,15 @@ impl TableRegistry {
             format!("{}.{}", namespace, table_name)
         };
 
-        self.entries.insert(class_name.to_string(), TableEntry {
-            namespace: namespace.to_string(),
-            bean_name,
-            table_name,
-            full_table_ref,
-        });
+        self.entries.insert(
+            class_name.to_string(),
+            TableEntry {
+                namespace: namespace.to_string(),
+                bean_name,
+                table_name,
+                full_table_ref,
+            },
+        );
     }
 
     pub fn get(&self, class_name: &str) -> Option<&TableEntry> {

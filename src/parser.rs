@@ -4,16 +4,20 @@ pub mod enum_info;
 pub mod field_info;
 
 pub use class_info::{ClassInfo, LubanTableConfig};
-pub use decorator::{DecoratorArg, ParsedDecorator, parse_decorator};
+pub use decorator::{parse_decorator, DecoratorArg, ParsedDecorator};
 pub use enum_info::{EnumInfo, EnumVariant};
 pub use field_info::{FieldInfo, FieldValidators, SizeConstraint};
 
 use anyhow::Result;
-use std::path::Path;
 use std::collections::HashMap;
-use swc_common::{sync::Lrc, SourceMap, FileName, BytePos, comments::{Comments, SingleThreadedComments}};
-use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax};
+use std::path::Path;
+use swc_common::{
+    comments::{Comments, SingleThreadedComments},
+    sync::Lrc,
+    BytePos, FileName, SourceMap,
+};
 use swc_ecma_ast::*;
+use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax};
 
 /// Extended type info for ObjectFactory detection
 struct TypeInfo {
@@ -38,10 +42,9 @@ impl TsParser {
         let content = std::fs::read_to_string(path)?;
         let file_hash = compute_hash(&content);
 
-        let fm = self.source_map.new_source_file(
-            FileName::Real(path.to_path_buf()).into(),
-            content,
-        );
+        let fm = self
+            .source_map
+            .new_source_file(FileName::Real(path.to_path_buf()).into(), content);
 
         let comments = SingleThreadedComments::default();
 
@@ -66,12 +69,16 @@ impl TsParser {
                 ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export)) => {
                     let export_pos = export.span.lo;
                     if let Decl::Class(class_decl) = &export.decl {
-                        if let Some(class_info) = self.extract_class(class_decl, path, &file_hash, &comments, export_pos) {
+                        if let Some(class_info) =
+                            self.extract_class(class_decl, path, &file_hash, &comments, export_pos)
+                        {
                             classes.push(class_info);
                         }
                     }
                     if let Decl::TsInterface(iface_decl) = &export.decl {
-                        if let Some(iface_info) = self.extract_interface(iface_decl, path, &file_hash, &comments, export_pos) {
+                        if let Some(iface_info) = self
+                            .extract_interface(iface_decl, path, &file_hash, &comments, export_pos)
+                        {
                             classes.push(iface_info);
                         }
                     }
@@ -90,10 +97,9 @@ impl TsParser {
         let content = std::fs::read_to_string(path)?;
         let file_hash = compute_hash(&content);
 
-        let fm = self.source_map.new_source_file(
-            FileName::Real(path.to_path_buf()).into(),
-            content,
-        );
+        let fm = self
+            .source_map
+            .new_source_file(FileName::Real(path.to_path_buf()).into(), content);
 
         let comments = SingleThreadedComments::default();
 
@@ -117,7 +123,9 @@ impl TsParser {
             if let ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export)) = item {
                 if let Decl::TsEnum(enum_decl) = &export.decl {
                     let export_pos = export.span.lo;
-                    if let Some(enum_info) = self.extract_enum(enum_decl, path, &file_hash, &comments, export_pos) {
+                    if let Some(enum_info) =
+                        self.extract_enum(enum_decl, path, &file_hash, &comments, export_pos)
+                    {
                         enums.push(enum_info);
                     }
                 }
@@ -127,11 +135,19 @@ impl TsParser {
         Ok(enums)
     }
 
-    fn extract_enum(&self, enum_decl: &TsEnumDecl, path: &Path, file_hash: &str, comments: &SingleThreadedComments, export_pos: BytePos) -> Option<EnumInfo> {
+    fn extract_enum(
+        &self,
+        enum_decl: &TsEnumDecl,
+        path: &Path,
+        file_hash: &str,
+        comments: &SingleThreadedComments,
+        export_pos: BytePos,
+    ) -> Option<EnumInfo> {
         let name = enum_decl.id.sym.to_string();
 
         // Get enum comment (raw JSDoc text)
-        let raw_enum_comment = self.get_raw_jsdoc_comment(export_pos, comments)
+        let raw_enum_comment = self
+            .get_raw_jsdoc_comment(export_pos, comments)
             .or_else(|| self.get_raw_jsdoc_comment(enum_decl.span.lo, comments));
 
         // Check for @ignore tag - if present, skip this enum
@@ -142,16 +158,19 @@ impl TsParser {
         }
 
         // Parse @flags tag from enum comment
-        let is_flags = raw_enum_comment.as_ref()
+        let is_flags = raw_enum_comment
+            .as_ref()
             .map(|c| parse_jsdoc_tag(c, "flags").is_some())
             .unwrap_or(false);
 
         // Parse @alias tag from enum comment
-        let enum_alias = raw_enum_comment.as_ref()
+        let enum_alias = raw_enum_comment
+            .as_ref()
             .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
         // Get cleaned comment (without @flags and @alias lines)
-        let enum_comment = raw_enum_comment.as_ref()
+        let enum_comment = raw_enum_comment
+            .as_ref()
             .map(|c| parse_jsdoc_description_excluding_tags(c, &["flags", "alias"]));
 
         let mut variants = Vec::new();
@@ -169,11 +188,13 @@ impl TsParser {
             let raw_member_comment = self.get_raw_jsdoc_comment(member.span.lo, comments);
 
             // Parse @alias tag from member comment (None if not specified)
-            let alias = raw_member_comment.as_ref()
+            let alias = raw_member_comment
+                .as_ref()
                 .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
             // Get cleaned comment (without @alias line)
-            let member_comment = raw_member_comment.as_ref()
+            let member_comment = raw_member_comment
+                .as_ref()
                 .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]));
 
             // Determine value and whether it's a string enum
@@ -271,7 +292,11 @@ impl TsParser {
     }
 
     /// Get raw JSDoc comment text (without parsing)
-    fn get_raw_jsdoc_comment(&self, pos: BytePos, comments: &SingleThreadedComments) -> Option<String> {
+    fn get_raw_jsdoc_comment(
+        &self,
+        pos: BytePos,
+        comments: &SingleThreadedComments,
+    ) -> Option<String> {
         comments.get_leading(pos).and_then(|cs| {
             // Try JSDoc block comment first (starts with *)
             cs.iter()
@@ -281,13 +306,14 @@ impl TsParser {
         })
     }
 
-    fn get_leading_comment(&self, pos: BytePos, comments: &SingleThreadedComments) -> Option<String> {
+    fn get_leading_comment(
+        &self,
+        pos: BytePos,
+        comments: &SingleThreadedComments,
+    ) -> Option<String> {
         comments.get_leading(pos).and_then(|cs| {
             // Try JSDoc block comment first (starts with *)
-            if let Some(jsdoc) = cs.iter()
-                .filter(|c| c.text.starts_with('*'))
-                .last()
-            {
+            if let Some(jsdoc) = cs.iter().filter(|c| c.text.starts_with('*')).last() {
                 return Some(parse_jsdoc_description(&jsdoc.text));
             }
             // Fall back to line comment (//)
@@ -298,7 +324,11 @@ impl TsParser {
         })
     }
 
-    fn get_param_comments(&self, pos: BytePos, comments: &SingleThreadedComments) -> HashMap<String, String> {
+    fn get_param_comments(
+        &self,
+        pos: BytePos,
+        comments: &SingleThreadedComments,
+    ) -> HashMap<String, String> {
         let mut params = HashMap::new();
         if let Some(cs) = comments.get_leading(pos) {
             for c in cs.iter() {
@@ -313,12 +343,19 @@ impl TsParser {
     /// Extract type parameters from a type parameter declaration
     /// Returns a map of type param name -> constraint type
     /// Warns if a type param has no constraint (max 3 params supported)
-    fn extract_type_params(&self, type_params: Option<&Box<TsTypeParamDecl>>, class_name: &str) -> HashMap<String, String> {
+    fn extract_type_params(
+        &self,
+        type_params: Option<&Box<TsTypeParamDecl>>,
+        class_name: &str,
+    ) -> HashMap<String, String> {
         let mut result = HashMap::new();
 
         if let Some(params) = type_params {
             if params.params.len() > 3 {
-                eprintln!("  Warning: {} has more than 3 type parameters, only first 3 will be processed", class_name);
+                eprintln!(
+                    "  Warning: {} has more than 3 type parameters, only first 3 will be processed",
+                    class_name
+                );
             }
 
             for (i, param) in params.params.iter().take(3).enumerate() {
@@ -326,7 +363,8 @@ impl TsParser {
 
                 if let Some(constraint) = &param.constraint {
                     // Extract constraint type
-                    let constraint_type = self.convert_type_with_params(constraint, &HashMap::new());
+                    let constraint_type =
+                        self.convert_type_with_params(constraint, &HashMap::new());
                     result.insert(param_name, constraint_type);
                 } else {
                     eprintln!("  Warning: {}<{}> - type parameter {} at position {} has no constraint (extends), skipping",
@@ -338,7 +376,14 @@ impl TsParser {
         result
     }
 
-    fn extract_class(&self, class_decl: &ClassDecl, path: &Path, file_hash: &str, comments: &SingleThreadedComments, export_pos: BytePos) -> Option<ClassInfo> {
+    fn extract_class(
+        &self,
+        class_decl: &ClassDecl,
+        path: &Path,
+        file_hash: &str,
+        comments: &SingleThreadedComments,
+        export_pos: BytePos,
+    ) -> Option<ClassInfo> {
         let name = class_decl.ident.sym.to_string();
         let mut fields = Vec::new();
         let mut implements = Vec::new();
@@ -351,8 +396,11 @@ impl TsParser {
         let first_decorator_pos = class_decl.class.decorators.first().map(|d| d.span.lo);
 
         // Get raw JSDoc comment to extract @alias tag
-        let raw_class_comment = self.get_raw_jsdoc_comment(export_pos, comments)
-            .or_else(|| first_decorator_pos.and_then(|pos| self.get_raw_jsdoc_comment(pos, comments)))
+        let raw_class_comment = self
+            .get_raw_jsdoc_comment(export_pos, comments)
+            .or_else(|| {
+                first_decorator_pos.and_then(|pos| self.get_raw_jsdoc_comment(pos, comments))
+            })
             .or_else(|| self.get_raw_jsdoc_comment(class_decl.ident.span.lo, comments))
             .or_else(|| self.get_raw_jsdoc_comment(class_decl.class.span.lo, comments));
 
@@ -364,11 +412,13 @@ impl TsParser {
         }
 
         // Parse @alias tag from raw comment
-        let class_alias = raw_class_comment.as_ref()
+        let class_alias = raw_class_comment
+            .as_ref()
             .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
         // Extract class comment (excluding @alias line)
-        let class_comment = raw_class_comment.as_ref()
+        let class_comment = raw_class_comment
+            .as_ref()
             .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
             .filter(|s| !s.is_empty())
             .or_else(|| self.get_leading_comment(export_pos, comments));
@@ -401,10 +451,14 @@ impl TsParser {
                     // Extract constructor parameters with modifiers
                     for param in &ctor.params {
                         if let ParamOrTsParamProp::TsParamProp(prop) = param {
-                            if let Some(mut field) = self.extract_param_prop_with_type_params(prop, &type_params) {
+                            if let Some(mut field) =
+                                self.extract_param_prop_with_type_params(prop, &type_params)
+                            {
                                 // Check @param comment (constructor JSDoc first, then class-level)
-                                if let Some(comment) = ctor_param_comments.get(&field.name)
-                                    .or_else(|| param_comments.get(&field.name)) {
+                                if let Some(comment) = ctor_param_comments
+                                    .get(&field.name)
+                                    .or_else(|| param_comments.get(&field.name))
+                                {
                                     field.comment = Some(comment.clone());
                                 }
                                 fields.push(field);
@@ -413,7 +467,9 @@ impl TsParser {
                     }
                 }
                 ClassMember::ClassProp(prop) => {
-                    if let Some(mut field) = self.extract_class_prop_with_type_params(prop, comments, &type_params) {
+                    if let Some(mut field) =
+                        self.extract_class_prop_with_type_params(prop, comments, &type_params)
+                    {
                         // Check @param comment if no inline comment
                         if field.comment.is_none() {
                             if let Some(comment) = param_comments.get(&field.name) {
@@ -433,28 +489,30 @@ impl TsParser {
             if let Some(parsed) = parse_decorator(dec) {
                 if parsed.name == "LubanTable" {
                     luban_table = Some(LubanTableConfig {
-                        mode: parsed.named_args.get("mode")
+                        mode: parsed
+                            .named_args
+                            .get("mode")
                             .and_then(|v| match v {
                                 DecoratorArg::String(s) => Some(s.clone()),
                                 _ => None,
                             })
                             .unwrap_or_else(|| "map".to_string()),
-                        index: parsed.named_args.get("index")
+                        index: parsed
+                            .named_args
+                            .get("index")
                             .and_then(|v| match v {
                                 DecoratorArg::String(s) => Some(s.clone()),
                                 _ => None,
                             })
                             .unwrap_or_default(),
-                        group: parsed.named_args.get("group")
-                            .and_then(|v| match v {
-                                DecoratorArg::String(s) => Some(s.clone()),
-                                _ => None,
-                            }),
-                        tags: parsed.named_args.get("tags")
-                            .and_then(|v| match v {
-                                DecoratorArg::String(s) => Some(s.clone()),
-                                _ => None,
-                            }),
+                        group: parsed.named_args.get("group").and_then(|v| match v {
+                            DecoratorArg::String(s) => Some(s.clone()),
+                            _ => None,
+                        }),
+                        tags: parsed.named_args.get("tags").and_then(|v| match v {
+                            DecoratorArg::String(s) => Some(s.clone()),
+                            _ => None,
+                        }),
                     });
                 }
             }
@@ -477,7 +535,14 @@ impl TsParser {
         })
     }
 
-    fn extract_interface(&self, iface_decl: &TsInterfaceDecl, path: &Path, file_hash: &str, comments: &SingleThreadedComments, export_pos: BytePos) -> Option<ClassInfo> {
+    fn extract_interface(
+        &self,
+        iface_decl: &TsInterfaceDecl,
+        path: &Path,
+        file_hash: &str,
+        comments: &SingleThreadedComments,
+        export_pos: BytePos,
+    ) -> Option<ClassInfo> {
         let name = iface_decl.id.sym.to_string();
         let mut fields = Vec::new();
 
@@ -485,7 +550,8 @@ impl TsParser {
         let type_params = self.extract_type_params(iface_decl.type_params.as_ref(), &name);
 
         // Get raw JSDoc comment to extract @alias tag
-        let raw_iface_comment = self.get_raw_jsdoc_comment(export_pos, comments)
+        let raw_iface_comment = self
+            .get_raw_jsdoc_comment(export_pos, comments)
             .or_else(|| self.get_raw_jsdoc_comment(iface_decl.span.lo, comments));
 
         // Check for @ignore tag - if present, skip this interface
@@ -496,11 +562,13 @@ impl TsParser {
         }
 
         // Parse @alias tag from raw comment
-        let iface_alias = raw_iface_comment.as_ref()
+        let iface_alias = raw_iface_comment
+            .as_ref()
             .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
         // Extract interface comment (excluding @alias line)
-        let iface_comment = raw_iface_comment.as_ref()
+        let iface_comment = raw_iface_comment
+            .as_ref()
             .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
             .filter(|s| !s.is_empty())
             .or_else(|| self.get_leading_comment(export_pos, comments));
@@ -517,7 +585,9 @@ impl TsParser {
 
         for member in &iface_decl.body.body {
             if let TsTypeElement::TsPropertySignature(prop) = member {
-                if let Some(mut field) = self.extract_interface_prop_with_type_params(prop, comments, &type_params) {
+                if let Some(mut field) =
+                    self.extract_interface_prop_with_type_params(prop, comments, &type_params)
+                {
                     // Check @param comment if no inline comment
                     if field.comment.is_none() {
                         if let Some(comment) = param_comments.get(&field.name) {
@@ -551,16 +621,23 @@ impl TsParser {
         self.extract_param_prop_with_type_params(prop, &HashMap::new())
     }
 
-    fn extract_param_prop_with_type_params(&self, prop: &TsParamProp, type_params: &HashMap<String, String>) -> Option<FieldInfo> {
+    fn extract_param_prop_with_type_params(
+        &self,
+        prop: &TsParamProp,
+        type_params: &HashMap<String, String>,
+    ) -> Option<FieldInfo> {
         let (name, type_ann, is_optional) = match &prop.param {
-            TsParamPropParam::Ident(ident) => {
-                (ident.id.sym.to_string(), ident.type_ann.as_ref(), ident.id.optional)
-            }
+            TsParamPropParam::Ident(ident) => (
+                ident.id.sym.to_string(),
+                ident.type_ann.as_ref(),
+                ident.id.optional,
+            ),
             TsParamPropParam::Assign(_) => return None,
         };
 
         // Skip internal marker fields
-        if name.contains("_nominal_") || name == "_is_trigger_combinator" || name == "_trigger_type" {
+        if name.contains("_nominal_") || name == "_is_trigger_combinator" || name == "_trigger_type"
+        {
             return None;
         }
 
@@ -589,14 +666,24 @@ impl TsParser {
     }
 
     #[allow(dead_code)]
-    fn extract_class_prop(&self, prop: &ClassProp, comments: &SingleThreadedComments) -> Option<FieldInfo> {
+    fn extract_class_prop(
+        &self,
+        prop: &ClassProp,
+        comments: &SingleThreadedComments,
+    ) -> Option<FieldInfo> {
         self.extract_class_prop_with_type_params(prop, comments, &HashMap::new())
     }
 
-    fn extract_class_prop_with_type_params(&self, prop: &ClassProp, comments: &SingleThreadedComments, type_params: &HashMap<String, String>) -> Option<FieldInfo> {
+    fn extract_class_prop_with_type_params(
+        &self,
+        prop: &ClassProp,
+        comments: &SingleThreadedComments,
+        type_params: &HashMap<String, String>,
+    ) -> Option<FieldInfo> {
         // Skip private/protected
         if prop.accessibility == Some(Accessibility::Private)
-            || prop.accessibility == Some(Accessibility::Protected) {
+            || prop.accessibility == Some(Accessibility::Protected)
+        {
             return None;
         }
 
@@ -606,7 +693,8 @@ impl TsParser {
         };
 
         // Skip internal marker fields
-        if name.contains("_nominal_") || name == "_is_trigger_combinator" || name == "_trigger_type" {
+        if name.contains("_nominal_") || name == "_is_trigger_combinator" || name == "_trigger_type"
+        {
             return None;
         }
 
@@ -644,11 +732,20 @@ impl TsParser {
     }
 
     #[allow(dead_code)]
-    fn extract_interface_prop(&self, prop: &TsPropertySignature, comments: &SingleThreadedComments) -> Option<FieldInfo> {
+    fn extract_interface_prop(
+        &self,
+        prop: &TsPropertySignature,
+        comments: &SingleThreadedComments,
+    ) -> Option<FieldInfo> {
         self.extract_interface_prop_with_type_params(prop, comments, &HashMap::new())
     }
 
-    fn extract_interface_prop_with_type_params(&self, prop: &TsPropertySignature, comments: &SingleThreadedComments, type_params: &HashMap<String, String>) -> Option<FieldInfo> {
+    fn extract_interface_prop_with_type_params(
+        &self,
+        prop: &TsPropertySignature,
+        comments: &SingleThreadedComments,
+        type_params: &HashMap<String, String>,
+    ) -> Option<FieldInfo> {
         let name = match &*prop.key {
             Expr::Ident(ident) => ident.sym.to_string(),
             _ => return None,
@@ -686,7 +783,11 @@ impl TsParser {
     }
 
     /// Convert type with ObjectFactory detection
-    fn convert_type_extended(&self, ts_type: &TsType, type_params: &HashMap<String, String>) -> TypeInfo {
+    fn convert_type_extended(
+        &self,
+        ts_type: &TsType,
+        type_params: &HashMap<String, String>,
+    ) -> TypeInfo {
         let original_type = self.convert_type_with_params(ts_type, type_params);
 
         // Check for ObjectFactory<T> pattern
@@ -739,12 +840,14 @@ impl TsParser {
 
     /// Infer type from an initializer expression
     /// Handles type assertions like `0 as number` or `"" as string`
-    fn infer_type_from_initializer(&self, expr: &Expr, type_params: &HashMap<String, String>) -> TypeInfo {
+    fn infer_type_from_initializer(
+        &self,
+        expr: &Expr,
+        type_params: &HashMap<String, String>,
+    ) -> TypeInfo {
         match expr {
             // Handle type assertions: `value as Type`
-            Expr::TsAs(as_expr) => {
-                self.convert_type_extended(&as_expr.type_ann, type_params)
-            }
+            Expr::TsAs(as_expr) => self.convert_type_extended(&as_expr.type_ann, type_params),
             // Handle type assertions: `value satisfies Type` (TypeScript 3.7+)
             Expr::TsSatisfies(satisfies_expr) => {
                 self.convert_type_extended(&satisfies_expr.type_ann, type_params)
@@ -772,7 +875,10 @@ impl TsParser {
                 is_object_factory: false,
                 factory_inner_type: None,
             },
-            Expr::Lit(Lit::Null(_)) | Expr::Unary(UnaryExpr { op: UnaryOp::Void, .. }) => TypeInfo {
+            Expr::Lit(Lit::Null(_))
+            | Expr::Unary(UnaryExpr {
+                op: UnaryOp::Void, ..
+            }) => TypeInfo {
                 field_type: "unknown".to_string(),
                 original_type: "unknown".to_string(),
                 is_object_factory: false,
@@ -802,7 +908,11 @@ impl TsParser {
         }
     }
 
-    fn convert_type_with_params(&self, ts_type: &TsType, type_params: &HashMap<String, String>) -> String {
+    fn convert_type_with_params(
+        &self,
+        ts_type: &TsType,
+        type_params: &HashMap<String, String>,
+    ) -> String {
         match ts_type {
             TsType::TsKeywordType(kw) => match kw.kind {
                 TsKeywordTypeKind::TsNumberKeyword => "number".to_string(),
@@ -829,7 +939,8 @@ impl TsParser {
                     "Array" | "ReadonlyArray" => {
                         if let Some(params) = &type_ref.type_params {
                             if let Some(first) = params.params.first() {
-                                let element_type = self.convert_type_with_params(first, type_params);
+                                let element_type =
+                                    self.convert_type_with_params(first, type_params);
                                 return format!("list,{}", element_type);
                             }
                         }
@@ -838,8 +949,10 @@ impl TsParser {
                     "Map" | "Record" => {
                         if let Some(params) = &type_ref.type_params {
                             if params.params.len() >= 2 {
-                                let key_type = self.convert_type_with_params(&params.params[0], type_params);
-                                let value_type = self.convert_type_with_params(&params.params[1], type_params);
+                                let key_type =
+                                    self.convert_type_with_params(&params.params[0], type_params);
+                                let value_type =
+                                    self.convert_type_with_params(&params.params[1], type_params);
                                 return format!("map,{},{}", key_type, value_type);
                             }
                         }
@@ -852,10 +965,15 @@ impl TsParser {
                 // Take first non-undefined/null type
                 for member in &union.types {
                     match &**member {
-                        TsType::TsKeywordType(kw) if matches!(
-                            kw.kind,
-                            TsKeywordTypeKind::TsUndefinedKeyword | TsKeywordTypeKind::TsNullKeyword
-                        ) => continue,
+                        TsType::TsKeywordType(kw)
+                            if matches!(
+                                kw.kind,
+                                TsKeywordTypeKind::TsUndefinedKeyword
+                                    | TsKeywordTypeKind::TsNullKeyword
+                            ) =>
+                        {
+                            continue
+                        }
                         _ => return self.convert_type_with_params(member, type_params),
                     }
                 }
@@ -873,7 +991,7 @@ impl Default for TsParser {
 }
 
 fn compute_hash(content: &str) -> String {
-    use md5::{Md5, Digest};
+    use md5::{Digest, Md5};
     let mut hasher = Md5::new();
     hasher.update(content.as_bytes());
     format!("{:x}", hasher.finalize())
@@ -956,7 +1074,7 @@ fn parse_jsdoc_tag(text: &str, tag_name: &str) -> Option<String> {
             let rest = rest.trim();
             if rest.starts_with('"') {
                 if let Some(end) = rest[1..].find('"') {
-                    return Some(rest[1..end+1].to_string());
+                    return Some(rest[1..end + 1].to_string());
                 }
             }
         }
@@ -1025,23 +1143,22 @@ fn parse_field_decorators(decorators: &[Decorator]) -> FieldValidators {
                 "Required" => {
                     validators.required = true;
                 }
-                "Size" => {
-                    match parsed.args.len() {
-                        1 => {
-                            if let Some(DecoratorArg::Number(n)) = parsed.args.first() {
-                                validators.size = Some(SizeConstraint::Exact(*n as usize));
-                            }
+                "Size" => match parsed.args.len() {
+                    1 => {
+                        if let Some(DecoratorArg::Number(n)) = parsed.args.first() {
+                            validators.size = Some(SizeConstraint::Exact(*n as usize));
                         }
-                        2 => {
-                            if let (Some(DecoratorArg::Number(min)), Some(DecoratorArg::Number(max))) =
-                                (parsed.args.get(0), parsed.args.get(1))
-                            {
-                                validators.size = Some(SizeConstraint::Range(*min as usize, *max as usize));
-                            }
-                        }
-                        _ => {}
                     }
-                }
+                    2 => {
+                        if let (Some(DecoratorArg::Number(min)), Some(DecoratorArg::Number(max))) =
+                            (parsed.args.get(0), parsed.args.get(1))
+                        {
+                            validators.size =
+                                Some(SizeConstraint::Range(*min as usize, *max as usize));
+                        }
+                    }
+                    _ => {}
+                },
                 "Set" => {
                     for arg in &parsed.args {
                         match arg {
@@ -1211,8 +1328,8 @@ export enum ItemType {
 
         assert_eq!(e.variants.len(), 3);
         assert_eq!(e.variants[0].name, "Role");
-        assert_eq!(e.variants[0].alias, None);  // No @alias tag
-        assert_eq!(e.variants[0].value, "role");  // Original string value
+        assert_eq!(e.variants[0].alias, None); // No @alias tag
+        assert_eq!(e.variants[0].value, "role"); // Original string value
         assert_eq!(e.variants[0].comment, Some("角色".to_string()));
 
         assert_eq!(e.variants[1].name, "Consumable");
@@ -1253,7 +1370,7 @@ export enum SkillStyle {
 
         assert_eq!(e.variants.len(), 3);
         assert_eq!(e.variants[0].name, "Attack");
-        assert_eq!(e.variants[0].alias, None);  // No @alias tag
+        assert_eq!(e.variants[0].alias, None); // No @alias tag
         assert_eq!(e.variants[0].value, "1");
         assert_eq!(e.variants[0].comment, Some("攻击技能".to_string()));
 
@@ -1371,13 +1488,13 @@ export enum Flags {
 
         assert_eq!(e.variants.len(), 4);
         assert_eq!(e.variants[0].name, "A");
-        assert_eq!(e.variants[0].value, "1");  // 1 << 0 = 1
+        assert_eq!(e.variants[0].value, "1"); // 1 << 0 = 1
 
         assert_eq!(e.variants[1].name, "B");
-        assert_eq!(e.variants[1].value, "2");  // 1 << 1 = 2
+        assert_eq!(e.variants[1].value, "2"); // 1 << 1 = 2
 
         assert_eq!(e.variants[2].name, "C");
-        assert_eq!(e.variants[2].value, "4");  // 1 << 2 = 4
+        assert_eq!(e.variants[2].value, "4"); // 1 << 2 = 4
 
         assert_eq!(e.variants[3].name, "D");
         assert_eq!(e.variants[3].value, "16"); // 1 << 4 = 16
@@ -1494,13 +1611,19 @@ export class TestClass {
         // factory: ObjectFactory<SomeBean>
         assert_eq!(class.fields[0].name, "factory");
         assert!(class.fields[0].is_object_factory);
-        assert_eq!(class.fields[0].factory_inner_type, Some("SomeBean".to_string()));
+        assert_eq!(
+            class.fields[0].factory_inner_type,
+            Some("SomeBean".to_string())
+        );
         assert_eq!(class.fields[0].field_type, "SomeBean");
 
         // factories: ObjectFactory<BaseType>[]
         assert_eq!(class.fields[1].name, "factories");
         assert!(class.fields[1].is_object_factory);
-        assert_eq!(class.fields[1].factory_inner_type, Some("BaseType".to_string()));
+        assert_eq!(
+            class.fields[1].factory_inner_type,
+            Some("BaseType".to_string())
+        );
         assert_eq!(class.fields[1].field_type, "list,BaseType");
 
         // normalField: string

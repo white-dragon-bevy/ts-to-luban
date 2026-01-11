@@ -1,5 +1,5 @@
-use regex::Regex;
 use crate::config::TableMapping;
+use regex::Regex;
 
 pub struct TableMappingResolver {
     mappings: Vec<(Regex, TableMapping)>,
@@ -7,10 +7,9 @@ pub struct TableMappingResolver {
 
 impl TableMappingResolver {
     pub fn new(mappings: &[TableMapping]) -> Self {
-        let compiled: Vec<_> = mappings.iter()
-            .filter_map(|m| {
-                Regex::new(&m.pattern).ok().map(|r| (r, m.clone()))
-            })
+        let compiled: Vec<_> = mappings
+            .iter()
+            .filter_map(|m| Regex::new(&m.pattern).ok().map(|r| (r, m.clone())))
             .collect();
         Self { mappings: compiled }
     }
@@ -22,7 +21,9 @@ impl TableMappingResolver {
             if regex.is_match(class_name) {
                 let name_lower = class_name.to_lowercase();
                 let input = mapping.input.replace("{name}", &name_lower);
-                let output = mapping.output.as_ref()
+                let output = mapping
+                    .output
+                    .as_ref()
                     .map(|o| o.replace("{name}", &name_lower));
                 return Some((input, output));
             }

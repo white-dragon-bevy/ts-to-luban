@@ -1,5 +1,5 @@
-use crate::parser::ClassInfo;
 use super::to_kebab_case;
+use crate::parser::ClassInfo;
 
 pub struct IndexGenerator;
 
@@ -17,7 +17,8 @@ impl IndexGenerator {
         for class in all_classes {
             lines.push(format!(
                 "import {{ create{} }} from \"./creators/{}\";",
-                class.name, to_kebab_case(&class.name)
+                class.name,
+                to_kebab_case(&class.name)
             ));
         }
 
@@ -40,7 +41,9 @@ impl IndexGenerator {
             let table_name = format!("{}Table", class.name);
             lines.push(format!(
                 "import {{ create{}, {} }} from \"./tables/{}\";",
-                table_name, table_name, to_kebab_case(&class.name)
+                table_name,
+                table_name,
+                to_kebab_case(&class.name)
             ));
         }
 
@@ -49,18 +52,26 @@ impl IndexGenerator {
         // Generate AllTables interface
         lines.push("export interface AllTables {".to_string());
         for class in table_classes {
-            lines.push(format!("    readonly {}Table: {}Table;", class.name, class.name));
+            lines.push(format!(
+                "    readonly {}Table: {}Table;",
+                class.name, class.name
+            ));
         }
         lines.push("}".to_string());
         lines.push(String::new());
 
         // Generate createAllTables function
-        lines.push("export function createAllTables(loader: (file: string) => unknown): AllTables {".to_string());
+        lines.push(
+            "export function createAllTables(loader: (file: string) => unknown): AllTables {"
+                .to_string(),
+        );
         lines.push("    return {".to_string());
         for class in table_classes {
             lines.push(format!(
                 "        {}Table: create{}Table(loader(\"{}\")),",
-                class.name, class.name, to_kebab_case(&class.name)
+                class.name,
+                class.name,
+                to_kebab_case(&class.name)
             ));
         }
         lines.push("    };".to_string());

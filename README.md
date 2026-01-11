@@ -489,6 +489,12 @@ npm test
 # 重新生成 XML 和 TS table 加载器
 npm run ts-luban
 
+# 强制重新生成（忽略缓存）
+npm run ts-luban:force
+
+# Watch 模式：监控源文件变化并自动重新生成
+npm run ts-luban:watch
+
 # 完整流程：生成 XML + 运行 Luban 转换
 npm run config:build
 ```
@@ -531,6 +537,41 @@ export = () => {
     });
 };
 ```
+
+## 命令行参数
+
+```bash
+luban-gen [OPTIONS]
+
+Options:
+  -c, --config <PATH>  配置文件路径 [默认: luban.config.toml]
+  -f, --force          强制重新生成（忽略缓存）
+  -v, --verbose        显示详细输出
+  -w, --watch          监控模式：监控源文件变化并自动重新生成
+  -h, --help           显示帮助
+  -V, --version        显示版本
+```
+
+### Watch 模式
+
+Watch 模式会监控配置中的所有源文件和目录，当检测到 TypeScript 文件变化时自动重新生成。
+
+**使用方法**：
+```bash
+# 启动 watch 模式
+cargo run -- -c luban-ts/luban.config.toml --watch
+
+# 或使用 -w 简写
+cargo run -- -c luban-ts/luban.config.toml -w
+```
+
+**特性**：
+- 自动检测 `.ts`、`.mts`、`.cts` 文件变化
+- 300ms 防抖延迟，避免频繁触发
+- 递归监控目录
+- 支持所有 source 类型（directory、file、files、glob）
+
+**注意**：Registration 模式暂不支持 watch。
 
 ## 开发
 

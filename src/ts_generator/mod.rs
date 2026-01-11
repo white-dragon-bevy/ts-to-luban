@@ -1,18 +1,18 @@
 mod creator_gen;
-mod table_gen;
-mod registry_gen;
-mod index_gen;
 mod import_resolver;
+mod index_gen;
+mod registry_gen;
+mod table_gen;
 
 pub use creator_gen::CreatorGenerator;
-pub use table_gen::TableGenerator;
-pub use registry_gen::RegistryGenerator;
-pub use index_gen::IndexGenerator;
 pub use import_resolver::ImportResolver;
+pub use index_gen::IndexGenerator;
+pub use registry_gen::RegistryGenerator;
+pub use table_gen::TableGenerator;
 
-use std::path::PathBuf;
 use crate::parser::ClassInfo;
 use crate::tsconfig::TsConfig;
+use std::path::PathBuf;
 
 /// Main TypeScript code generator
 pub struct TsCodeGenerator {
@@ -49,7 +49,9 @@ impl TsCodeGenerator {
         }
 
         // Generate tables for @LubanTable classes
-        let table_classes: Vec<_> = self.classes.iter()
+        let table_classes: Vec<_> = self
+            .classes
+            .iter()
             .filter(|c| c.luban_table.is_some())
             .collect();
 
