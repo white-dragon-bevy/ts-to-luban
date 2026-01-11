@@ -1,6 +1,14 @@
 import { LubanTable } from "../index";
 
 /**
+ * 属性缩放配置
+ */
+export class ScalingStat {
+    public type: string;
+    public value: number;
+}
+
+/**
  * 武器配置
  * 注意：mainStat 和 subStat 字段不会在 TypeScript 中定义
  * 它们通过 luban.config.toml 中的 virtual_fields 配置添加

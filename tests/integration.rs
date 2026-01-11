@@ -59,16 +59,23 @@ path = "{}"
     // Verify output content
     let output = fs::read_to_string(&output_path).unwrap();
 
-    // Check for SimpleClass (no parent since no extends)
+    // Check for SimpleClass (class without extends has parent="TsClass")
     assert!(
-        output.contains(r#"<bean name="SimpleClass">"#),
-        "Missing SimpleClass bean"
+        output.contains(r#"<bean name="SimpleClass" parent="TsClass">"#),
+        "Missing SimpleClass bean with parent='TsClass'"
     );
 
-    // Check for DamageTrigger (no parent since no extends in fixture)
+    // Check for DamageTrigger (class implements EntityTrigger, has parent="EntityTrigger")
     assert!(
-        output.contains(r#"<bean name="DamageTrigger">"#),
-        "Missing DamageTrigger bean"
+        output.contains(r#"<bean name="DamageTrigger" parent="EntityTrigger">"#),
+        "Missing DamageTrigger bean with parent='EntityTrigger'"
+    );
+
+    // Check for EntityTrigger (interface, should not have parent)
+    assert!(
+        output.contains(r#"<bean name="EntityTrigger">"#)
+            && !output.contains(r#"<bean name="EntityTrigger" parent="#),
+        "Missing EntityTrigger interface bean (should have no parent)"
     );
 
     // Check for list type

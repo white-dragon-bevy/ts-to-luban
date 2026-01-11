@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="implements_parent" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="IEntity" comment="Base entity interface">
+        <var name="id" type="double" comment="Entity ID"/>
+    </bean>
+
+    <bean name="IEffect" parent="IEntity" comment="Intermediate interface extending base">
+        <var name="priority" type="double" comment="Effect priority"/>
+    </bean>
+
+    <bean name="FireEffect" parent="IEntity" comment="Fire effect implements single interface Generated: &lt;bean name=&quot;FireEffect&quot; parent=&quot;IEntity&quot;&gt;">
+        <var name="damage" type="double"/>
+    </bean>
+
+    <bean name="HealEffect" parent="IEffect" comment="Heal effect implements intermediate interface Generated: &lt;bean name=&quot;HealEffect&quot; parent=&quot;IEffect&quot;&gt;">
+        <var name="healAmount" type="double#range=[0,100]"/>
+    </bean>
+
+    <bean name="PoisonEffect" parent="IEffect" comment="Poison effect implements single interface with validators Generated: &lt;bean name=&quot;PoisonEffect&quot; parent=&quot;IEffect&quot;&gt;">
+        <var name="name" type="string!"/>
+        <var name="duration" type="double#range=[0,100]"/>
+    </bean>
+
+    <bean name="BuffEffect" parent="PoisonEffect" comment="Buff effect extends a class (extends takes priority) Generated: &lt;bean name=&quot;BuffEffect&quot; parent=&quot;PoisonEffect&quot;&gt;">
+        <var name="stackable" type="bool"/>
+    </bean>
+
+    <bean name="MultiInterfaceEffect" comment="Effect with multiple implements (ambiguous, no parent) Generated: &lt;bean name=&quot;MultiInterfaceEffect&quot;&gt;">
+        <var name="id" type="double"/>
+        <var name="priority" type="double"/>
+        <var name="value" type="double"/>
+    </bean>
+
+    <bean name="StandaloneClass" comment="Standalone class without implements or extends (no parent) Generated: &lt;bean name=&quot;StandaloneClass&quot;&gt;">
+        <var name="data" type="string"/>
+    </bean>
+
+    <!-- 数据表配置 -->
+    <table name="PoisonEffectTable" value="PoisonEffect" mode="map" index="id" input="*@../datas/poisoneffect/"/>
+    <table name="BuffEffectTable" value="BuffEffect" mode="map" index="id" input="*@../datas/buffeffect/"/>
+
+</module>

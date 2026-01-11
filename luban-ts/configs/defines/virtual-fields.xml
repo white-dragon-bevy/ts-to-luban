@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="virtual_fields" comment="自动生成的 ts class Bean 定义">
 
+    <bean name="ScalingStat" comment="属性缩放配置">
+        <var name="type" type="string"/>
+        <var name="value" type="double"/>
+    </bean>
+
     <bean name="WeaponConfig" comment="武器配置 注意：mainStat 和 subStat 字段不会在 TypeScript 中定义 它们通过 luban.config.toml 中的 virtual_fields 配置添加">
         <var name="id" type="double"/>
         <var name="name" type="string"/>

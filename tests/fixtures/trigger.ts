@@ -1,4 +1,4 @@
-interface EntityTrigger {}
+export interface EntityTrigger {}
 
 export class DamageTrigger implements EntityTrigger {
     public damage: number;

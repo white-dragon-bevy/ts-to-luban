@@ -94,7 +94,13 @@ impl<'a> XmlGenerator<'a> {
     }
 
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo, all_classes: &[ClassInfo]) {
-        let parent = class.extends.clone().unwrap_or_default();
+        let parent = if class.is_interface {
+            // Interface: no parent if no extends (not affected by the change)
+            class.extends.clone().unwrap_or_default()
+        } else {
+            // Class: resolve parent based on extends, implements, or default to TsClass
+            self.resolve_class_parent(class, all_classes)
+        };
 
         let alias_attr = class
             .alias
@@ -121,13 +127,17 @@ impl<'a> XmlGenerator<'a> {
 
         // Collect parent field names to skip redeclared fields
         let mut parent_field_names = std::collections::HashSet::new();
-        let mut current_parent = class.extends.as_ref();
+        let mut current_parent = if parent.is_empty() {
+            None
+        } else {
+            Some(parent.as_str())
+        };
         while let Some(parent_name) = current_parent {
             if let Some(parent) = all_classes.iter().find(|c| &c.name == parent_name) {
                 for field in &parent.fields {
                     parent_field_names.insert(field.name.as_str());
                 }
-                current_parent = parent.extends.as_ref();
+                current_parent = parent.extends.as_ref().map(|s| s.as_str());
             } else {
                 break;
             }
@@ -141,6 +151,25 @@ impl<'a> XmlGenerator<'a> {
         }
 
         lines.push("    </bean>".to_string());
+    }
+
+    /// Resolves the parent for a class based on:
+    /// 1. Extends keyword (highest priority)
+    /// 2. Single implements interface (only when no extends)
+    /// 3. Default "TsClass" (only when no extends and no/multiple implements)
+    fn resolve_class_parent(&self, class: &ClassInfo, _all_classes: &[ClassInfo]) -> String {
+        // Priority 1: Use extends if present
+        if let Some(extends) = &class.extends {
+            return extends.clone();
+        }
+
+        // Priority 2: Use single implements if present
+        if class.implements.len() == 1 {
+            return class.implements[0].clone();
+        }
+
+        // Priority 3: Default to TsClass
+        "TsClass".to_string()
     }
 
     fn generate_field(&self, lines: &mut Vec<String>, field: &FieldInfo) {
@@ -632,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_extends_no_parent() {
+    fn test_class_no_extends_has_tsclass_parent() {
         let class = ClassInfo {
             name: "MyClass".to_string(),
             comment: None,
@@ -650,8 +679,7 @@ mod tests {
         };
 
         let xml = generate_xml(&[class]);
-        assert!(xml.contains(r#"<bean name="MyClass">"#));
-        assert!(!xml.contains("parent="));
+        assert!(xml.contains(r#"<bean name="MyClass" parent="TsClass">"#));
     }
 
     #[test]
@@ -674,6 +702,177 @@ mod tests {
 
         let xml = generate_xml(&[class]);
         assert!(xml.contains(r#"<bean name="ChildClass" parent="ParentClass">"#));
+    }
+
+    #[test]
+    fn test_interface_no_extends_no_parent() {
+        let interface = ClassInfo {
+            name: "MyInterface".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[interface]);
+        assert!(xml.contains(r#"<bean name="MyInterface">"#));
+        assert!(!xml.contains("parent="));
+    }
+
+    // Tests for implements → parent feature
+
+    #[test]
+    fn test_class_single_implements_no_extends_has_parent() {
+        let class = ClassInfo {
+            name: "DamageTrigger".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("damage", "double", false)],
+            implements: vec!["EntityTrigger".to_string()],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        assert!(xml.contains(r#"<bean name="DamageTrigger" parent="EntityTrigger">"#));
+    }
+
+    #[test]
+    fn test_class_multiple_implements_no_extends_has_tsclass_parent() {
+        let class = ClassInfo {
+            name: "MultiImplClass".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec!["Interface1".to_string(), "Interface2".to_string()],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // Multiple implements is ambiguous, should default to TsClass
+        assert!(xml.contains(r#"<bean name="MultiImplClass" parent="TsClass">"#));
+    }
+
+    #[test]
+    fn test_class_extends_overrides_implements() {
+        let class = ClassInfo {
+            name: "ChildClass".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec!["SomeInterface".to_string()],
+            extends: Some("BaseClass".to_string()),
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // Extends should take priority over implements
+        assert!(xml.contains(r#"<bean name="ChildClass" parent="BaseClass">"#));
+    }
+
+    #[test]
+    fn test_class_implements_recursive_interface_chain() {
+        let base_interface = ClassInfo {
+            name: "EntityTrigger".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("id", "double", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let child_interface = ClassInfo {
+            name: "BaseTrigger".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("name", "string", false)],
+            implements: vec![],
+            extends: Some("EntityTrigger".to_string()),
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let class = ClassInfo {
+            name: "DamageTrigger".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("damage", "double", false)],
+            implements: vec!["BaseTrigger".to_string()],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[base_interface, child_interface, class]);
+        assert!(xml.contains(r#"<bean name="DamageTrigger" parent="BaseTrigger">"#));
+        assert!(xml.contains(r#"<bean name="BaseTrigger" parent="EntityTrigger">"#));
+    }
+
+    #[test]
+    fn test_class_no_implements_no_extends_has_tsclass_parent() {
+        let class = ClassInfo {
+            name: "SimpleClass".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // Backward compatibility: no implements, no extends → default to TsClass
+        assert!(xml.contains(r#"<bean name="SimpleClass" parent="TsClass">"#));
     }
 
     #[test]

@@ -6,7 +6,14 @@ path = "configs/defines/examples.xml"
 module_name = "examples"
 table_output_path = "src/ts-tables"
 
-# 第一个数据源 - 核心表
+# 第一个数据源 - 基础类（TsClass）
+[[sources]]
+type = "file"
+path = "src/__examples__/base.ts"
+output_path = "configs/defines/base.xml"
+module_name = "base"
+
+# 第二个数据源 - 核心表
 [[sources]]
 type = "file"
 path = "src/__examples__/all-validators.ts"
@@ -45,6 +52,13 @@ type = "file"
 path = "src/__examples__/virtual-fields.ts"
 output_path = "configs/defines/virtual-fields.xml"
 module_name = "virtual_fields"
+
+# 第七个数据源 - implements → parent 特性
+[[sources]]
+type = "file"
+path = "src/__examples__/implements-parent.ts"
+output_path = "configs/defines/implements-parent.xml"
+module_name = "implements_parent"
 
 # 虚拟字段配置：WeaponConfig
 [[virtual_fields]]
