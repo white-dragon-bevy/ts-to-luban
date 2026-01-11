@@ -26,13 +26,13 @@
         <var name="stackable" type="bool"/>
     </bean>
 
-    <bean name="MultiInterfaceEffect" comment="Effect with multiple implements (ambiguous, no parent) Generated: &lt;bean name=&quot;MultiInterfaceEffect&quot;&gt;">
+    <bean name="MultiInterfaceEffect" parent="TsClass" comment="Effect with multiple implements (ambiguous, no parent) Generated: &lt;bean name=&quot;MultiInterfaceEffect&quot;&gt;">
         <var name="id" type="double"/>
         <var name="priority" type="double"/>
         <var name="value" type="double"/>
     </bean>
 
-    <bean name="StandaloneClass" comment="Standalone class without implements or extends (no parent) Generated: &lt;bean name=&quot;StandaloneClass&quot;&gt;">
+    <bean name="StandaloneClass" parent="TsClass" comment="Standalone class without implements or extends (no parent) Generated: &lt;bean name=&quot;StandaloneClass&quot;&gt;">
         <var name="data" type="string"/>
     </bean>
 

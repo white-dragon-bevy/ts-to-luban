@@ -60,7 +60,19 @@ impl<'a> CreatorGenerator<'a> {
             "export function create{}(json: unknown): {} {{",
             class.name, class.name
         ));
-        lines.push(format!("    const obj = new {}();", class.name));
+
+        if class.is_interface {
+            // Interface: return plain JSON object directly (cannot use 'new')
+            // Start object literal, no 'obj' variable needed
+            lines.push("    return {".to_string());
+        } else {
+            // Class: use no-arg constructor
+            lines.push(format!(
+                "    const Ctor = {} as unknown as new () => {};",
+                class.name, class.name
+            ));
+            lines.push(format!("    const obj = new Ctor();",));
+        }
 
         // Collect parent class names in inheritance chain (from top to bottom)
         let mut parent_chain = Vec::new();
@@ -80,7 +92,7 @@ impl<'a> CreatorGenerator<'a> {
             class.fields.iter().map(|f| f.name.as_str()).collect();
 
         // Generate field assignments for parent classes first
-        // Skip fields that are redeclared in the child class or are virtual fields
+        // Skip fields that are redeclared in child class or are virtual fields
         for parent_name in &parent_chain {
             if let Some(parent) = self.all_classes.iter().find(|c| &c.name == parent_name) {
                 for field in &parent.fields {
@@ -90,30 +102,70 @@ impl<'a> CreatorGenerator<'a> {
                         if field.relocate_tags.is_some() {
                             continue;
                         }
-                        let assignment = self.generate_field_assignment(field);
-                        lines.push(format!("    {}", assignment));
+                        let assignment =
+                            self.generate_field_assignment_impl(field, class.is_interface);
+                        lines.push(assignment);
                     }
                 }
             }
         }
 
-        // Then generate field assignments for the current class
+        // Then generate field assignments for current class
         // Skip virtual fields (with relocate_tags)
         for field in &class.fields {
             if field.relocate_tags.is_some() {
                 continue;
             }
-            let assignment = self.generate_field_assignment(field);
-            lines.push(format!("    {}", assignment));
+            let assignment = self.generate_field_assignment_impl(field, class.is_interface);
+            lines.push(assignment);
         }
 
-        lines.push("    return obj;".to_string());
+        if class.is_interface {
+            // Close object literal for interface
+            lines.push("    };".to_string());
+        } else {
+            lines.push("    return obj;".to_string());
+        }
+
         lines.push("}".to_string());
 
         lines.join("\n")
     }
 
-    fn generate_field_assignment(&self, field: &FieldInfo) -> String {
+    fn generate_field_assignment_impl(&self, field: &FieldInfo, for_interface: bool) -> String {
+        let name = &field.name;
+
+        if for_interface {
+            // Interface: return object literal with "field: value," format
+            self.generate_interface_field_assignment(field)
+        } else {
+            // Class: return assignment with "obj.field = value" format
+            self.generate_class_field_assignment(field)
+        }
+    }
+
+    fn generate_interface_field_assignment(&self, field: &FieldInfo) -> String {
+        let name = &field.name;
+
+        if field.is_object_factory {
+            // ObjectFactory<T> → factory function
+            if field.field_type.starts_with("list,") {
+                // Use 'in' operator to check if property exists (works better in roblox-ts/luau)
+                format!("        {}: \"{}\" in (json as Record<string, unknown>) ? ((json as Record<string, unknown>).{} as defined[]).map(item => {{ const data = item as Record<string, unknown>; return () => createBean(data.$type as string, data); }}) : [],", name, name, name)
+            } else {
+                format!("        {}: (() => {{ const data = (json as Record<string, unknown>).{} as Record<string, unknown>; return () => createBean(data.$type as string, data); }})();", name, name)
+            }
+        } else {
+            // All other types: use 'as any' to handle unknown fields
+            // This prevents TypeScript errors when JSON contains fields not in interface
+            format!(
+                "        {}: (json as Record<string, unknown>).{} as any,",
+                name, name
+            )
+        }
+    }
+
+    fn generate_class_field_assignment(&self, field: &FieldInfo) -> String {
         let name = &field.name;
 
         if field.is_object_factory {
@@ -151,12 +203,10 @@ impl<'a> CreatorGenerator<'a> {
                 )
             }
         } else {
-            // Primitive type
+            // Primitive type: always use 'as any' to avoid type errors
             format!(
-                "obj.{} = (json as Record<string, unknown>).{} as {};",
-                name,
-                name,
-                self.ts_type_for_field(&field.original_type)
+                "obj.{} = (json as Record<string, unknown>).{} as any;",
+                name, name
             )
         }
     }

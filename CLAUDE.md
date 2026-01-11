@@ -17,10 +17,10 @@
 # 构建
 cargo build --release
 
-# 运行示例
+# 运行示例 
 cargo run -- -c luban-ts/luban.config.toml
 
-# 强制重新生成（忽略缓存）
+# 强制重新生成（开发时优先使用, 忽略缓存）
 cargo run -- -c luban-ts/luban.config.toml -f
 
 # Watch 模式：监控源文件变化并自动重新生成

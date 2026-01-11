@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="examples" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="Item" alias="道具" comment="道具配置">
+    <bean name="Item" alias="道具" parent="TsClass" comment="道具配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
         <var name="category" type="string#set=weapon,armor,consumable,material"/>
@@ -9,19 +9,19 @@
         <var name="aa" type="string" comment="test"/>
     </bean>
 
-    <bean name="Skill" alias="技能" comment="技能配置">
+    <bean name="Skill" alias="技能" parent="TsClass" comment="技能配置">
         <var name="id" type="double"/>
         <var name="skillName" type="string!"/>
         <var name="cooldown" type="double#range=[0,100]"/>
     </bean>
 
-    <bean name="DropItem" comment="掉落物品">
+    <bean name="DropItem" parent="TsClass" comment="掉落物品">
         <var name="itemId" type="double#ref=examples.ItemTable" comment="引用道具表 -&gt; #ref=examples.ItemTable"/>
         <var name="count" type="double#range=[1,100]"/>
         <var name="probability" type="double#range=[0,100]"/>
     </bean>
 
-    <bean name="Monster" alias="怪物" comment="怪物配置">
+    <bean name="Monster" alias="怪物" parent="TsClass" comment="怪物配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
         <var name="level" type="double#range=[1,100]"/>
@@ -30,20 +30,20 @@
         <var name="drops" type="(list#index=itemId),DropItem" comment="掉落列表 - 按道具ID索引"/>
     </bean>
 
-    <bean name="Player" comment="玩家信息">
+    <bean name="Player" parent="TsClass" comment="玩家信息">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
         <var name="avatar" type="string!"/>
         <var name="signature" type="string?" comment="可选签名"/>
     </bean>
 
-    <bean name="Difficulty" comment="难度配置">
+    <bean name="Difficulty" parent="TsClass" comment="难度配置">
         <var name="id" type="double"/>
         <var name="difficultyLevel" type="double#range=[1,3]"/>
         <var name="difficultyName" type="string"/>
     </bean>
 
-    <bean name="Team" comment="队伍配置">
+    <bean name="Team" parent="TsClass" comment="队伍配置">
         <var name="id" type="double"/>
         <var name="members" type="(list#size=3),double" comment="固定3人"/>
         <var name="substitutes" type="(list#size=[0,2]),double" comment="0-2人替补"/>

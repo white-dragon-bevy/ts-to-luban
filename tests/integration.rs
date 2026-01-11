@@ -95,6 +95,12 @@ path = "{}"
         output.contains(r#"type="bool?""#),
         "Missing optional bool field"
     );
+
+    // Check for ObjectFactory field with injectData tag
+    assert!(
+        output.contains(r#"tags="injectData=__objectFactory__""#),
+        "Missing injectData=__objectFactory__ tag for ObjectFactory field"
+    );
 }
 
 #[test]

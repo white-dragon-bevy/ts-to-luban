@@ -227,11 +227,24 @@ impl<'a> XmlGenerator<'a> {
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
-        let tags_attr = field
-            .relocate_tags
-            .as_ref()
-            .map(|t| format!(r#" tags="{}""#, escape_xml(t)))
-            .unwrap_or_default();
+        // Build tags: relocate_tags + injectData for ObjectFactory
+        let tags_attr = {
+            let mut tags = Vec::new();
+
+            if let Some(relocate) = &field.relocate_tags {
+                tags.push(relocate.as_str());
+            }
+
+            if field.is_object_factory {
+                tags.push("injectData=__objectFactory__");
+            }
+
+            if tags.is_empty() {
+                String::new()
+            } else {
+                format!(r#" tags="{}""#, escape_xml(&tags.join(",")))
+            }
+        };
 
         lines.push(format!(
             r#"        <var name="{}" type="{}"{}{}/>"#,
@@ -994,6 +1007,105 @@ mod tests {
         assert!(xml.contains(r#"<var name="CAN_MOVE" value="1" alias="移动" comment="可以移动"/>"#));
         assert!(
             xml.contains(r#"<var name="CAN_ATTACK" value="2" alias="攻击" comment="可以攻击"/>"#)
+        );
+    }
+
+    #[test]
+    fn test_object_factory_field_inject_data_tag() {
+        let class = ClassInfo {
+            name: "CharacterConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "triggers".to_string(),
+                    field_type: "list,BaseTrigger".to_string(),
+                    comment: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: true,
+                    factory_inner_type: Some("BaseTrigger".to_string()),
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "ObjectFactory<BaseTrigger>[]".to_string(),
+                    relocate_tags: None,
+                },
+                FieldInfo {
+                    name: "normalField".to_string(),
+                    field_type: "string".to_string(),
+                    comment: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "string".to_string(),
+                    relocate_tags: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // ObjectFactory field should have injectData=__objectFactory__ tag
+        assert!(
+            xml.contains(r#"tags="injectData=__objectFactory__""#),
+            "XML should contain injectData=__objectFactory__ tag for ObjectFactory fields"
+        );
+        // Normal field should NOT have injectData tag
+        assert!(!xml.contains(
+            r#"<var name="normalField" type="string" tags="injectData=__objectFactory__""#
+        ));
+    }
+
+    #[test]
+    fn test_object_factory_with_relocate_tags() {
+        let class = ClassInfo {
+            name: "WeaponConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![FieldInfo {
+                name: "mainStat".to_string(),
+                field_type: "ScalingStat".to_string(),
+                comment: None,
+                is_optional: false,
+                validators: FieldValidators::default(),
+                is_object_factory: true,
+                factory_inner_type: Some("ScalingStat".to_string()),
+                is_constructor: false,
+                constructor_inner_type: None,
+                original_type: "ObjectFactory<ScalingStat>".to_string(),
+                relocate_tags: Some("relocateTo=TScalingStat,prefix=_main".to_string()),
+            }],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // Both tags should be present, separated by comma
+        assert!(
+            xml.contains(
+                r#"tags="relocateTo=TScalingStat,prefix=_main,injectData=__objectFactory__""#
+            ) || xml.contains(
+                r#"tags="injectData=__objectFactory__,relocateTo=TScalingStat,prefix=_main""#
+            ),
+            "XML should combine relocate_tags and injectData tag"
         );
     }
 }

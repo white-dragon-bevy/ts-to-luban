@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="ComplexClass" parent="TsClass">
+        <var name="items" type="list,string"/>
+        <var name="data" type="map,string,double"/>
+    </bean>
+
+    <bean name="SimpleClass" parent="TsClass">
+        <var name="name" type="string"/>
+        <var name="count" type="double"/>
+        <var name="active" type="bool?"/>
+    </bean>
+
+    <bean name="EntityTrigger">
+    </bean>
+
+    <bean name="DamageTrigger" parent="EntityTrigger">
+        <var name="damage" type="double"/>
+        <var name="radius" type="double"/>
+    </bean>
+
+</module>

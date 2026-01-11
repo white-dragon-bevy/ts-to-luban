@@ -78,8 +78,10 @@ impl IndexGenerator {
         lines.push("}".to_string());
         lines.push(String::new());
 
-        // Re-export registry functions
-        lines.push("export { createBean, createByType } from \"./registry\";".to_string());
+        // Re-export registry functions and types
+        lines.push(
+            "export { createBean, createByType, type Creator } from \"./registry\";".to_string(),
+        );
 
         lines.join("\n")
     }

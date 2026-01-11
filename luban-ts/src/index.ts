@@ -69,3 +69,20 @@ export type ObjectFactory<T> = () => T;
  * }
  */
 export type Constructor<T> = new (...args: any[]) => T;
+
+/**
+ * Writable type to remove readonly modifiers
+ * Used to make loaded config data mutable
+ *
+ * @example
+ * interface ReadonlyConfig {
+ *   readonly id: number;
+ *   readonly name: string;
+ * }
+ *
+ * const config: Writable<ReadonlyConfig> = { id: 1, name: "Test" };
+ * config.name = "New"; // OK - readonly removed
+ */
+export type Writable<T> = {
+	-readonly [P in keyof T]: T[P];
+};

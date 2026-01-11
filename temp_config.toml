@@ -1,0 +1,10 @@
+[project]
+tsconfig = "tests/fixtures/tsconfig.json"
+
+[output]
+path = "output.xml"
+cache_file = ".cache.json"
+
+[[sources]]
+type = "directory"
+path = "tests/fixtures"

@@ -46,6 +46,12 @@ path = "src/__examples__/constructor-type.ts"
 output_path = "configs/defines/constructor-type.xml"
 module_name = "constructor"
 
+# 第六个数据源 - 字段可见性测试（私有字段、接口、readonly）
+[[sources]]
+type = "file"
+path = "src/__examples__/field-visibility.ts"
+output_path = "configs/defines/field-visibility.xml"
+module_name = "field_visibility"
 # 第六个数据源 - 虚拟字段测试
 [[sources]]
 type = "file"
