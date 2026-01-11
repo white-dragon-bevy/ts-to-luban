@@ -32,6 +32,13 @@ path = "src/__examples__/inheritance.ts"
 output_path = "configs/defines/inheritance.xml"
 module_name = "inheritance"
 
+# 第五个数据源 - Constructor<T> 类型测试
+[[sources]]
+type = "file"
+path = "src/__examples__/constructor-type.ts"
+output_path = "configs/defines/constructor-type.xml"
+module_name = "constructor"
+
 # table_mappings - 按模块匹配
 [[table_mappings]]
 pattern = "Weapon|Armor"

@@ -116,6 +116,15 @@ impl<'a> CreatorGenerator<'a> {
             } else {
                 format!("obj.{} = (() => {{ const data = (json as Record<string, unknown>).{} as Record<string, unknown>; return () => createBean(data.$type as string, data); }})();", name, name)
             }
+        } else if field.is_constructor {
+            // Constructor<T> → string (class name)
+            // In JSON, it's stored as string class name like "DamageTrigger"
+            // At runtime, we can't validate string is actual Constructor<T>
+            // Use 'as any' to bypass type checking since it's inherently unsafe
+            format!(
+                "obj.{} = (json as Record<string, unknown>).{} as any;",
+                name, name
+            )
         } else if !self.is_bean_type(&field.original_type)
             && (field.original_type.ends_with("[]") || field.original_type.starts_with("list,"))
         {

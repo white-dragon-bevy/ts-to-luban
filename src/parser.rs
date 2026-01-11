@@ -19,12 +19,14 @@ use swc_common::{
 use swc_ecma_ast::*;
 use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax};
 
-/// Extended type info for ObjectFactory detection
+/// Extended type info for ObjectFactory and Constructor detection
 struct TypeInfo {
     field_type: String,
     original_type: String,
     is_object_factory: bool,
     factory_inner_type: Option<String>,
+    is_constructor: bool,
+    constructor_inner_type: Option<String>,
 }
 
 pub struct TsParser {
@@ -648,6 +650,8 @@ impl TsParser {
                 original_type: "string".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             });
 
         // Parse field decorators from TsParamProp
@@ -661,6 +665,8 @@ impl TsParser {
             validators,
             is_object_factory: type_info.is_object_factory,
             factory_inner_type: type_info.factory_inner_type,
+            is_constructor: type_info.is_constructor,
+            constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
         })
     }
@@ -710,6 +716,8 @@ impl TsParser {
                 original_type: "string".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             }
         };
 
@@ -727,6 +735,8 @@ impl TsParser {
             validators,
             is_object_factory: type_info.is_object_factory,
             factory_inner_type: type_info.factory_inner_type,
+            is_constructor: type_info.is_constructor,
+            constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
         })
     }
@@ -760,6 +770,8 @@ impl TsParser {
                 original_type: "string".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             });
 
         // Extract field comment
@@ -773,6 +785,8 @@ impl TsParser {
             validators: FieldValidators::default(),
             is_object_factory: type_info.is_object_factory,
             factory_inner_type: type_info.factory_inner_type,
+            is_constructor: type_info.is_constructor,
+            constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
         })
     }
@@ -802,6 +816,29 @@ impl TsParser {
                                 original_type,
                                 is_object_factory: true,
                                 factory_inner_type: Some(inner_type),
+                                is_constructor: false,
+                                constructor_inner_type: None,
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for Constructor<T> pattern
+        if let TsType::TsTypeRef(type_ref) = ts_type {
+            if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                if ident.sym.to_string() == "Constructor" {
+                    if let Some(params) = &type_ref.type_params {
+                        if let Some(first) = params.params.first() {
+                            let inner_type = self.convert_type_with_params(first, type_params);
+                            return TypeInfo {
+                                field_type: "string".to_string(),
+                                original_type,
+                                is_object_factory: false,
+                                factory_inner_type: None,
+                                is_constructor: true,
+                                constructor_inner_type: Some(inner_type),
                             };
                         }
                     }
@@ -822,6 +859,8 @@ impl TsParser {
                                     original_type,
                                     is_object_factory: true,
                                     factory_inner_type: Some(inner_type),
+                                    is_constructor: false,
+                                    constructor_inner_type: None,
                                 };
                             }
                         }
@@ -835,6 +874,8 @@ impl TsParser {
             original_type,
             is_object_factory: false,
             factory_inner_type: None,
+            is_constructor: false,
+            constructor_inner_type: None,
         }
     }
 
@@ -862,18 +903,24 @@ impl TsParser {
                 original_type: "number".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
             Expr::Lit(Lit::Str(_)) => TypeInfo {
                 field_type: "string".to_string(),
                 original_type: "string".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
             Expr::Lit(Lit::Bool(_)) => TypeInfo {
                 field_type: "bool".to_string(),
                 original_type: "boolean".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
             Expr::Lit(Lit::Null(_))
             | Expr::Unary(UnaryExpr {
@@ -883,6 +930,8 @@ impl TsParser {
                 original_type: "unknown".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
             // For array literals: `[]` or `[1, 2, 3]`
             Expr::Array(_) => TypeInfo {
@@ -890,6 +939,8 @@ impl TsParser {
                 original_type: "unknown[]".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
             // For object literals: `{}`
             Expr::Object(_) => TypeInfo {
@@ -897,6 +948,8 @@ impl TsParser {
                 original_type: "unknown".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
             // Default to string for other cases
             _ => TypeInfo {
@@ -904,6 +957,8 @@ impl TsParser {
                 original_type: "string".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
             },
         }
     }
@@ -1592,12 +1647,12 @@ export enum ExportedEnum {
     #[test]
     fn test_parse_object_factory_field() {
         let ts_code = r#"
-export class TestClass {
+ export class TestClass {
     public factory: ObjectFactory<SomeBean>;
     public factories: ObjectFactory<BaseType>[];
     public normalField: string;
-}
-"#;
+ }
+ "#;
         let mut file = NamedTempFile::with_suffix(".ts").unwrap();
         file.write_all(ts_code.as_bytes()).unwrap();
 
@@ -1629,7 +1684,47 @@ export class TestClass {
         // normalField: string
         assert_eq!(class.fields[2].name, "normalField");
         assert!(!class.fields[2].is_object_factory);
-        assert_eq!(class.fields[2].factory_inner_type, None);
-        assert_eq!(class.fields[2].field_type, "string");
+    }
+
+    #[test]
+    fn test_parse_constructor_field() {
+        let ts_code = r#"
+ export class TestClass {
+    public triggerType: Constructor<BaseTrigger>;
+    public componentType: Constructor<UIComponent>;
+    public normalField: string;
+ }
+ "#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 3);
+
+        // triggerType: Constructor<BaseTrigger>
+        assert_eq!(class.fields[0].name, "triggerType");
+        assert!(class.fields[0].is_constructor);
+        assert_eq!(
+            class.fields[0].constructor_inner_type,
+            Some("BaseTrigger".to_string())
+        );
+        assert_eq!(class.fields[0].field_type, "string");
+
+        // componentType: Constructor<UIComponent>
+        assert_eq!(class.fields[1].name, "componentType");
+        assert!(class.fields[1].is_constructor);
+        assert_eq!(
+            class.fields[1].constructor_inner_type,
+            Some("UIComponent".to_string())
+        );
+        assert_eq!(class.fields[1].field_type, "string");
+
+        // normalField: string
+        assert_eq!(class.fields[2].name, "normalField");
+        assert!(!class.fields[2].is_constructor);
     }
 }

@@ -58,3 +58,14 @@ export function Nominal(): PropertyDecorator {
 // === 泛型类型 ===
 
 export type ObjectFactory<T> = () => T;
+
+/**
+ * Constructor type for storing class references
+ * Used for type registration and constraint validation
+ *
+ * @example
+ * export class Config {
+ *     public triggerType: Constructor<BaseTrigger>;
+ * }
+ */
+export type Constructor<T> = new (...args: any[]) => T;

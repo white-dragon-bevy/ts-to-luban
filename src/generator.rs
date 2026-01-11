@@ -144,6 +144,25 @@ impl<'a> XmlGenerator<'a> {
     }
 
     fn generate_field(&self, lines: &mut Vec<String>, field: &FieldInfo) {
+        // Handle Constructor<T> fields
+        if field.is_constructor {
+            if let Some(constructor_type) = &field.constructor_inner_type {
+                let final_type = format!("string#constructor={}", constructor_type);
+
+                let comment_attr = field
+                    .comment
+                    .as_ref()
+                    .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
+                    .unwrap_or_default();
+
+                lines.push(format!(
+                    r#"        <var name="{}" type="{}"{}/>"#,
+                    field.name, final_type, comment_attr
+                ));
+                return;
+            }
+        }
+
         let mut mapped_type = self.type_mapper.map_full_type(&field.field_type);
         let validators = &field.validators;
 
@@ -512,6 +531,8 @@ mod tests {
             validators: FieldValidators::default(),
             is_object_factory: false,
             factory_inner_type: None,
+            is_constructor: false,
+            constructor_inner_type: None,
             original_type: field_type.to_string(),
         }
     }
@@ -530,6 +551,8 @@ mod tests {
                 validators: FieldValidators::default(),
                 is_object_factory: false,
                 factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
                 original_type: "string".to_string(),
             }],
             implements: vec![],

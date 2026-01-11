@@ -26,6 +26,10 @@ pub struct FieldInfo {
     pub is_object_factory: bool,
     /// Inner type T for ObjectFactory<T>
     pub factory_inner_type: Option<String>,
+    /// Whether this field is Constructor<T> type
+    pub is_constructor: bool,
+    /// Inner type T for Constructor<T>
+    pub constructor_inner_type: Option<String>,
     /// Original TypeScript type (before mapping)
     pub original_type: String,
 }
@@ -40,6 +44,8 @@ impl Default for FieldInfo {
             validators: FieldValidators::default(),
             is_object_factory: false,
             factory_inner_type: None,
+            is_constructor: false,
+            constructor_inner_type: None,
             original_type: String::new(),
         }
     }
