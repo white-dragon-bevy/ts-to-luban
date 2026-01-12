@@ -61,6 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Download artifacts
@@ -82,3 +83,10 @@ jobs:
             artifacts/luban-gen-win32-x64.exe/luban-gen-win32-x64.exe
             artifacts/luban-gen-darwin-x64/luban-gen-darwin-x64
             artifacts/luban-gen-darwin-arm64/luban-gen-darwin-arm64
+
+      - name: Trigger npm publish
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          gh workflow run publish-npm.yml -f version="$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
