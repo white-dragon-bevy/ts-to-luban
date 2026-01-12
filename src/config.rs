@@ -105,6 +105,8 @@ pub struct TableMapping {
     pub pattern: String,
     pub input: String,
     pub output: Option<String>,
+    #[serde(default)]
+    pub table_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

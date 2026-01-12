@@ -58,7 +58,7 @@ impl<'a> XmlGenerator<'a> {
         let config = class.luban_table.as_ref().unwrap();
 
         // Resolve input/output from table_mappings config
-        let (input, output) = self
+        let (input, output, table_name_override) = self
             .table_mapping_resolver
             .resolve(&class.name)
             .unwrap_or_else(|| {
@@ -68,7 +68,7 @@ impl<'a> XmlGenerator<'a> {
                 )
             });
 
-        let table_name = format!("{}Table", class.name);
+        let table_name = table_name_override.unwrap_or_else(|| format!("{}Table", class.name));
 
         let mut attrs = vec![
             format!(r#"name="{}""#, table_name),
