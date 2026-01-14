@@ -5,7 +5,7 @@ pub mod field_info;
 pub mod virtual_fields;
 
 pub use class_info::{ClassInfo, LubanTableConfig};
-pub use decorator::{parse_decorator, DecoratorArg, ParsedDecorator};
+pub use decorator::{parse_decorator, DecoratorArg};
 pub use enum_info::{EnumInfo, EnumVariant};
 pub use field_info::{FieldInfo, FieldValidators, SizeConstraint};
 pub use virtual_fields::inject_virtual_fields;
