@@ -74,7 +74,7 @@ luban-ts/                # npm 包 (roblox-ts)
 - `int` / `float` / `long` → 保持原样
 - `T[]` / `Array<T>` → `list,T`
 - `Map<K,V>` / `Record<K,V>` → `map,K,V`
-- `ObjectFactory<T>` → `T` + `tags="objectFactory"`
+- `ObjectFactory<T>` → `T` + `tags="ObjectFactory=true"`
 
 ### 2. 父类解析
 
@@ -141,7 +141,6 @@ export class TbItem {
 <table name="TbItemTable" value="TbItem" mode="map" index="id"
        input="configs/TbItem.xlsx" output="TbItem" group="client"/>
 ```
-
 **LubanTableConfig 选项**：
 - `mode`: `"map"` | `"list"` | `"one"` | `"singleton"`
 - `index`: 索引字段名（mode="map" 时必填）
@@ -183,7 +182,7 @@ export class CharacterConfig {
 
 生成：
 ```xml
-<var name="triggers" type="list,BaseTrigger" tags="objectFactory"/>
+<var name="triggers" type="list,BaseTrigger" tags="ObjectFactory=true"/>
 ```
 
 ### 4. TypeScript Table 代码生成
@@ -289,7 +288,7 @@ Entity = "long"
 
 ### 8. Enum 导出
 
-**字符串枚举**（使用 `tags="string"`）：
+**字符串枚举**（新版鲁班自动检测）：
 ```typescript
 export enum ItemType {
     Role = "role",
@@ -298,7 +297,7 @@ export enum ItemType {
 ```
 生成：
 ```xml
-<enum name="ItemType" tags="string">
+<enum name="ItemType">
     <var name="Role" alias="role" value="1"/>
     <var name="Consumable" alias="consumable" value="2"/>
 </enum>

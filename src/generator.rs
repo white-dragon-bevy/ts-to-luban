@@ -236,7 +236,7 @@ impl<'a> XmlGenerator<'a> {
             }
 
             if field.is_object_factory {
-                tags.push("injectData=__objectFactory__");
+                tags.push("ObjectFactory=true");
             }
 
             if tags.is_empty() {
@@ -422,15 +422,9 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
         .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
         .unwrap_or_default();
 
-    let tags_attr = if enum_info.is_string_enum {
-        r#" tags="string""#.to_string()
-    } else {
-        String::new()
-    };
-
     lines.push(format!(
-        r#"    <enum name="{}"{}{}{}{}>"#,
-        enum_info.name, alias_attr, flags_attr, comment_attr, tags_attr
+        r#"    <enum name="{}"{}{}{}>"#,
+        enum_info.name, alias_attr, flags_attr, comment_attr
     ));
 
     for variant in &enum_info.variants {
@@ -925,7 +919,7 @@ mod tests {
         };
 
         let xml = generate_enum_xml(&[enum_info], "test");
-        assert!(xml.contains(r#"<enum name="ItemType" comment="物品类型" tags="string">"#));
+        assert!(xml.contains(r#"<enum name="ItemType" comment="物品类型">"#));
         // No alias attribute, value is the original string
         assert!(xml.contains(r#"<var name="Role" value="role" comment="角色"/>"#));
         assert!(xml.contains(r#"<var name="Consumable" value="consumable" comment="消耗品"/>"#));
@@ -1056,14 +1050,14 @@ mod tests {
         };
 
         let xml = generate_xml(&[class]);
-        // ObjectFactory field should have injectData=__objectFactory__ tag
+        // ObjectFactory field should have ObjectFactory=true tag
         assert!(
-            xml.contains(r#"tags="injectData=__objectFactory__""#),
-            "XML should contain injectData=__objectFactory__ tag for ObjectFactory fields"
+            xml.contains(r#"tags="ObjectFactory=true""#),
+            "XML should contain ObjectFactory=true tag for ObjectFactory fields"
         );
-        // Normal field should NOT have injectData tag
+        // Normal field should NOT have ObjectFactory tag
         assert!(!xml.contains(
-            r#"<var name="normalField" type="string" tags="injectData=__objectFactory__""#
+            r#"<var name="normalField" type="string" tags="ObjectFactory=true""#
         ));
     }
 
@@ -1101,11 +1095,11 @@ mod tests {
         // Both tags should be present, separated by comma
         assert!(
             xml.contains(
-                r#"tags="relocateTo=TScalingStat,prefix=_main,injectData=__objectFactory__""#
+                r#"tags="relocateTo=TScalingStat,prefix=_main,ObjectFactory=true""#
             ) || xml.contains(
-                r#"tags="injectData=__objectFactory__,relocateTo=TScalingStat,prefix=_main""#
+                r#"tags="ObjectFactory=true,relocateTo=TScalingStat,prefix=_main""#
             ),
-            "XML should combine relocate_tags and injectData tag"
+            "XML should combine relocate_tags and ObjectFactory tag"
         );
     }
 }

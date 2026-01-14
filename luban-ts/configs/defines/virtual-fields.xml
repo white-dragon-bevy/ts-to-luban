@@ -20,7 +20,7 @@
     </bean>
 
     <!-- 数据表配置 -->
-    <table name="WeaponConfigTable" value="WeaponConfig" mode="map" index="id" input="*@../datas/equipment/weaponconfig/"/>
-    <table name="ArmorConfigTable" value="ArmorConfig" mode="map" index="id" input="*@../datas/equipment/armorconfig/"/>
+    <table name="WeaponConfigTable" value="WeaponConfig" mode="map" index="id" input="*@../datas/equipment/weapon-config/"/>
+    <table name="ArmorConfigTable" value="ArmorConfig" mode="map" index="id" input="*@../datas/equipment/armor-config/"/>
 
 </module>

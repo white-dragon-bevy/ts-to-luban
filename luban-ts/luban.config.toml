@@ -58,13 +58,6 @@ path = "src/__examples__/virtual-fields.ts"
 output_path = "configs/defines/virtual-fields.xml"
 module_name = "virtual_fields"
 
-# 第七个数据源 - implements → parent 特性
-[[sources]]
-type = "file"
-path = "src/__examples__/implements-parent.ts"
-output_path = "configs/defines/implements-parent.xml"
-module_name = "implements_parent"
-
 # 虚拟字段配置：WeaponConfig
 [[virtual_fields]]
 class = "WeaponConfig"

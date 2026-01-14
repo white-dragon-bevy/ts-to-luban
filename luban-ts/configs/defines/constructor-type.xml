@@ -21,6 +21,6 @@
     </bean>
 
     <!-- 数据表配置 -->
-    <table name="CharacterConfigTable" value="CharacterConfig" mode="map" index="id" input="*@../datas/characterconfig/"/>
+    <table name="CharacterConfigTable" value="CharacterConfig" mode="map" index="id" input="*@../datas/character-config/"/>
 
 </module>
