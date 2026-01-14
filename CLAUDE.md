@@ -50,10 +50,8 @@ src/
 ├── table_mapping.rs     # table_mappings 解析
 ├── ts_generator/        # TypeScript 代码生成
 │   ├── mod.rs           # TsCodeGenerator 入口
-│   ├── creator_gen.rs   # Creator 函数生成
-│   ├── table_gen.rs     # Table 加载器生成
-│   ├── registry_gen.rs  # Registry 生成
-│   ├── index_gen.rs     # Index 入口生成
+│   ├── beans_gen.rs     # Beans 字典生成
+│   ├── tables_simple_gen.rs # Tables 类型定义生成
 │   └── import_resolver.rs # Import 路径解析
 ├── cache.rs             # 增量缓存系统
 ├── scanner.rs           # 文件扫描
@@ -185,36 +183,94 @@ export class CharacterConfig {
 <var name="triggers" type="list,BaseTrigger" tags="ObjectFactory=true"/>
 ```
 
-### 4. TypeScript Table 代码生成
+### 4. TypeScript 代码生成
 
-自动生成类型安全的 table 加载器，取代 Luban codebuild。
+自动生成 TypeScript 类型定义和 class 字典。
 
 **配置**：
 ```toml
 [output]
 path = "configs/defines/generated.xml"
-table_output_path = "out/tables"   # 启用 TS 代码生成
+module_name = "examples"            # 默认 module 名称
+table_output_path = "out/tables"    # 启用 TS 代码生成
 ```
 
-**生成的文件结构**：
+**生成的文件**：
 ```
 out/tables/
-├── creators/           # 每个 bean 的 creator 函数
-│   ├── monster.ts
-│   └── ...
-├── tables/             # 每个 table 的加载器
-│   ├── monster.ts
-│   └── ...
-├── registry.ts         # bean 注册表
-└── index.ts            # AllTables 入口
+├── tables.ts           # @LubanTable 类型定义
+└── beans.ts            # 所有 class 的字典
 ```
+
+#### 4.1 tables.ts - Table 类型定义
+
+包含所有 `@LubanTable` 标记的表类型定义。
+
+**生成示例**：
+```typescript
+import { Item, Monster, Player } from "../__examples__/all-validators";
+import { Weapon, Armor } from "../__examples__/items";
+
+export interface AllTables {
+    ItemTable: Map<number, Item>;
+    MonsterTable: Map<number, Monster>;
+    PlayerTable: Map<number, Player>;
+    WeaponTable: Map<number, Weapon>;
+    ArmorTable: Map<number, Armor>;
+}
+
+export const Tables: AllTables;
+```
+
+**类型映射规则**：
+- `mode="map"` → `Map<number, Type>`
+- `mode="list"` → `Type[]`
+- `mode="one"` 或 `mode="singleton"` → `Type`
 
 **使用示例**：
 ```typescript
-import { createAllTables } from "./out/tables";
+import { Tables } from "./out/tables/tables";
 
-const tables = createAllTables((file) => loadJson(file));
-const monster = tables.MonsterTable.get(1001);
+// 类型安全的表访问
+const item = Tables.ItemTable.get(1001);
+const monsters = Tables.MonsterTable;
+```
+
+#### 4.2 beans.ts - Class 字典
+
+包含所有 class（不含 interface）的字典，以 `module.ClassName` 为 key。
+
+**生成示例**：
+```typescript
+import { Item, Monster, Player } from "../__examples__/all-validators";
+import { Weapon, Armor } from "../__examples__/items";
+import { GameConfig } from "../__examples__/table-modes";
+
+export const Beans = {
+    "examples.Item": Item,
+    "examples.Monster": Monster,
+    "examples.Player": Player,
+    "items.Weapon": Weapon,
+    "items.Armor": Armor,
+    "modes.GameConfig": GameConfig,
+} as const;
+```
+
+**Module 前缀规则**：
+- 优先使用 `sources[].module_name`
+- 回退到 `output.module_name`
+- 如果都为空，直接使用类名
+
+**使用示例**：
+```typescript
+import { Beans } from "./out/tables/beans";
+
+// 通过 bean name 动态获取 class
+const ItemClass = Beans["examples.Item"];
+const WeaponClass = Beans["items.Weapon"];
+
+// 创建实例
+const item = new ItemClass();
 ```
 
 ### 5. JSDoc 注释
