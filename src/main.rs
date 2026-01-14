@@ -491,8 +491,12 @@ fn run_generation(
         println!("\n[5/5] Generating TypeScript table code...");
 
         let resolved_path = project_root.join(table_output_path);
-        let ts_generator =
-            TsCodeGenerator::new(resolved_path.clone(), final_classes.clone(), tsconfig);
+        let ts_generator = TsCodeGenerator::new(
+            resolved_path.clone(),
+            final_classes.clone(),
+            tsconfig,
+            config.output.module_name.clone(),
+        );
 
         ts_generator.generate()?;
         println!("  Written TypeScript tables to {:?}", resolved_path);
