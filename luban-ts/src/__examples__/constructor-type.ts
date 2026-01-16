@@ -1,6 +1,6 @@
 // Example of Constructor<T> type for type registration
 
-import { Constructor, LubanTable } from "../index";
+import { Constructor, LubanTable, ObjectFactory } from "../index";
 
 /**
  * Base trigger class
@@ -35,4 +35,5 @@ export class CharacterConfig {
     // Store constructor reference for trigger
     // In Excel, store class name like "DamageTrigger" or "HealTrigger"
     public triggerType: Constructor<BaseTrigger>;
+
 }

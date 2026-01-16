@@ -54,7 +54,7 @@ impl<'a> BeansGenerator<'a> {
             lines.push(String::new());
         }
 
-        // Generate Beans object
+        // Generate Beans const object
         lines.push("export const Beans = {".to_string());
 
         // Collect bean entries and sort them

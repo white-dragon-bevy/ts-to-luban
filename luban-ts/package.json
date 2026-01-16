@@ -3,20 +3,18 @@
   "version": "0.2.5",
   "main": "out/init.lua",
   "types": "out/index.d.ts",
-	"type": "module",
+  "type": "module",
   "files": [
     "out"
   ],
   "scripts": {
     "build": "rbxtsc --type game",
-		"test": "npx test-cloud-testez --roots ReplicatedStorage/TS",
+    "test": "npx test-cloud-testez --roots ReplicatedStorage/TS",
     "watch": "rbxtsc -w --type game",
     "ts-luban": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml",
     "ts-luban:force": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml -f",
     "ts-luban:watch": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml -w",
-    "luban": "dotnet node_modules/@rbxts/luban/src/Luban/bin/Release/net8.0/Luban.dll",
-    "luban2": "dotnet D:/projects/rbxts/rbxts-luban/src/Luban/bin/Release/net8.0/Luban.dll",
-    "config:build": "npm run ts-luban:force && npm run luban2 -- -t all -d roblox-ts-json --conf configs/luban.conf -x outputDataDir=configs/jsonConfigs -x compact=1"
+    "config:build": "npx luban -t all -c lua-bin -d roblox-ts-json --conf configs/luban.conf -x outputCodeDir=src/types/configs -x outputDataDir=configs/jsonConfigs -x compact=1 && npm run ts-luban:force"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
@@ -29,6 +27,10 @@
     "@rbxts/compiler-types": "3.0.0-types.0"
   },
   "dependencies": {
-    "@rbxts/test-cloud-testez": "^0.5.11"
+    "@rbxts/rbx-better-signal": "^2.1.0",
+    "@rbxts/rewire": "^0.3.0",
+    "@rbxts/services": "^1.6.0",
+    "@rbxts/test-cloud-testez": "^0.5.11",
+    "@white-dragon-bevy/luban-cli": "link:D:/projects/white-dragon-bevy/luban"
   }
 }

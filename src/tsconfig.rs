@@ -31,6 +31,14 @@ impl TsConfig {
     }
 }
 
+impl Default for TsConfig {
+    fn default() -> Self {
+        Self {
+            compiler_options: CompilerOptions::default(),
+        }
+    }
+}
+
 fn remove_json_comments(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();

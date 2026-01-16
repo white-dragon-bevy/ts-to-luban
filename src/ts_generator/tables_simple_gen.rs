@@ -57,10 +57,6 @@ impl<'a> TablesSimpleGenerator<'a> {
             lines.push(format!("    {}: {};", table_name, type_def));
         }
         lines.push("}".to_string());
-        lines.push(String::new());
-
-        // Generate Tables export
-        lines.push("export const Tables: AllTables;".to_string());
 
         lines.join("\n")
     }

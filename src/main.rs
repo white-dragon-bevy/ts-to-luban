@@ -491,8 +491,28 @@ fn run_generation(
         println!("\n[5/5] Generating TypeScript table code...");
 
         let resolved_path = project_root.join(table_output_path);
+
+        // For TypeScript generation, determine the true project root
+        // (where assets/ folder is located)
+        // Check if we're in a subdirectory by looking for parent indicators
+        let ts_project_root = if project_root
+            .parent()
+            .map(|p| p.join("Cargo.toml").exists() || p.join("assets").exists())
+            .unwrap_or(false)
+        {
+            // Parent has Cargo.toml or assets/, use parent as project root
+            project_root
+                .parent()
+                .unwrap_or(project_root)
+                .to_path_buf()
+        } else {
+            // Use current project_root
+            project_root.to_path_buf()
+        };
+
         let ts_generator = TsCodeGenerator::new(
             resolved_path.clone(),
+            ts_project_root,
             final_classes.clone(),
             tsconfig,
             config.output.module_name.clone(),

@@ -8,9 +8,21 @@ importers:
 
   .:
     dependencies:
+      '@rbxts/rbx-better-signal':
+        specifier: ^2.1.0
+        version: 2.1.0
+      '@rbxts/rewire':
+        specifier: ^0.3.0
+        version: 0.3.0
+      '@rbxts/services':
+        specifier: ^1.6.0
+        version: 1.6.0
       '@rbxts/test-cloud-testez':
         specifier: ^0.5.11
         version: 0.5.11
+      '@white-dragon-bevy/luban-cli':
+        specifier: link:D:/projects/white-dragon-bevy/luban
+        version: link:../../luban
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
@@ -33,8 +45,20 @@ packages:
   '@rbxts/compiler-types@3.0.0-types.0':
     resolution: {integrity: sha512-VGOHJPoL7+56NTatMGqQj3K7xWuzEV+aP4QD5vZiHu+bcff3kiTmtoadaF6NkJrmwfFAvbsd4Dg764ZjWNceag==}
 
+  '@rbxts/janitor@1.16.0-ts.0':
+    resolution: {integrity: sha512-WAePVQuJg5NolwsY3dYLsyJa0Cf7dOyoGBUf6jtP2azgti7yUr0bmYNR7Z+nNEXWxsSKO49EdI+YOhnvp9b4mQ==}
+
   '@rbxts/luban@0.6.5':
     resolution: {integrity: sha512-aC3hOrprK9vwLXgbkZc0CDP1WRBZWrlvlSmt/YMymnmMnFdTMGqoYNjSumnkzmPnJVXQ9cBrCtuzXedyT0Wo6Q==}
+
+  '@rbxts/rbx-better-signal@2.1.0':
+    resolution: {integrity: sha512-mMTFiGS2+8CMeYMiGDAgOg9a3OxlA+m+yaH42EqlxgAcUV0vjo4lH8KST9Go2w0w9cJFX/xqQ2LvxME8vzA8FA==}
+
+  '@rbxts/rewire@0.3.0':
+    resolution: {integrity: sha512-wChhGZ3kEkEsMK9ZuwKpwRsC7OGVZlvxrYMR3beFgCIPXE58JKLziBLkDACmd709XCCEmsMAqv9HMCMhSTD08Q==}
+
+  '@rbxts/services@1.6.0':
+    resolution: {integrity: sha512-YH02E1/tGHeMXB0Mam8qPdAZa2fjQWdylEscSL4Zn0RIaQeByYImA2qUsXM3nBdhcyKHDwltzSznDKyCGfFEWA==}
 
   '@rbxts/test-cloud-testez@0.5.11':
     resolution: {integrity: sha512-rKD6LTFo7ZzuEpl3OOMbxSzATY9rXxUea3qp1pirjL3vq5alqeScGlG0WcA+l6rSaBetyFk1ONATHqzaylhZtg==}
@@ -282,7 +306,17 @@ snapshots:
 
   '@rbxts/compiler-types@3.0.0-types.0': {}
 
+  '@rbxts/janitor@1.16.0-ts.0': {}
+
   '@rbxts/luban@0.6.5': {}
+
+  '@rbxts/rbx-better-signal@2.1.0':
+    dependencies:
+      '@rbxts/janitor': 1.16.0-ts.0
+
+  '@rbxts/rewire@0.3.0': {}
+
+  '@rbxts/services@1.6.0': {}
 
   '@rbxts/test-cloud-testez@0.5.11':
     dependencies:

@@ -2,6 +2,15 @@
   "name": "ts-to-luban-test",
   "tree": {
     "$className": "DataModel",
+    "StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"bootstrap": {
+					"$path": "bootstrap/client"
+				}
+			}
+		},
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "rbxts_include": {
@@ -13,13 +22,28 @@
           }
         }
       },
+      "configs": {
+        "$className": "Folder",
+        "jsonConfigs":{
+            "$path": "configs/jsonConfigs"
+        }
+      },
       "TS": {
         "$path": "out"
-      }
+      },
+      "TS-types": {
+				"$path": "out/types"
+			},
+			"bootstrap": {
+				"$path": "bootstrap/shared"
+			}
     },
-    "ServerScriptService": {
-      "$className": "ServerScriptService"
-    },
+		"ServerScriptService": {
+			"$className": "ServerScriptService",
+			"bootstrap": {
+				"$path": "bootstrap/server"
+			}
+		},
     "TestService": {
       "$path": "node_modules/@rbxts/test-cloud-testez/TestService"
     }
