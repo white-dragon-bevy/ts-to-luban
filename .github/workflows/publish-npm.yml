@@ -33,6 +33,7 @@ jobs:
             VERSION="${{ github.event.release.tag_name }}"
             VERSION="${VERSION#v}"
           fi
+          cd luban-ts
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Download release binaries
