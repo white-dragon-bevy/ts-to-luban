@@ -9,6 +9,8 @@ pub struct LubanTableConfig {
     pub index: String,
     pub group: Option<String>,
     pub tags: Option<String>,
+    /// Custom table name from table_mappings config (overrides default {ClassName}Table)
+    pub table_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="discriminated_union" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="ShapeInfo" comment="Shape info with discriminated union">
-        <var name="width" type="double" comment="Width of the shape"/>
-        <var name="height" type="double" comment="Height of the shape"/>
-    </bean>
-
     <bean name="CircleShape" parent="ShapeInfo" comment="Circle shape">
         <var name="radius" type="double"/>
     </bean>
 
     <bean name="RectangleShape" parent="ShapeInfo" comment="Rectangle shape">
+    </bean>
+
+    <bean name="ShapeInfo" comment="Shape info with discriminated union">
+        <var name="width" type="double" comment="Width of the shape"/>
+        <var name="height" type="double" comment="Height of the shape"/>
     </bean>
 
 </module>

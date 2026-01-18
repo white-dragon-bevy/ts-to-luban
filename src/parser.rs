@@ -524,6 +524,7 @@ impl TsParser {
                             DecoratorArg::String(s) => Some(s.clone()),
                             _ => None,
                         }),
+                        table_name: None,
                     });
                 }
             }
@@ -1848,6 +1849,30 @@ export class TestClass {
         // normalField: string
         assert_eq!(class.fields[3].name, "normalField");
         assert_eq!(class.fields[3].field_type, "string");
+    }
+
+    #[test]
+    fn test_parse_dollar_type_without_generic() {
+        let ts_code = r#"
+export class StatData {
+    public id: string;
+    public type: $type<StateTypeBase>;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 2);
+
+        // type: $type<StateTypeBase> → type="StateTypeBase"
+        assert_eq!(class.fields[1].name, "type");
+        assert_eq!(class.fields[1].field_type, "StateTypeBase");
+        assert_eq!(class.fields[1].original_type, "$type<StateTypeBase>");
     }
 
     #[test]

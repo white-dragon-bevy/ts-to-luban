@@ -52,7 +52,11 @@ impl<'a> TablesSimpleGenerator<'a> {
         lines.push("export interface AllTables {".to_string());
         for class in table_classes {
             let config = class.luban_table.as_ref().unwrap();
-            let table_name = format!("{}Table", class.name);
+            let table_name = config
+                .table_name
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| format!("{}Table", class.name));
             let type_def = self.generate_table_type(&class.name, &config.mode, &config.index);
             lines.push(format!("    {}: {};", table_name, type_def));
         }
@@ -80,5 +84,79 @@ impl<'a> TablesSimpleGenerator<'a> {
                 format!("Map<number, {}>", class_name)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{ClassInfo, LubanTableConfig};
+    use crate::ts_generator::ImportResolver;
+    use crate::tsconfig::TsConfig;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_custom_table_name_override() {
+        let resolver = ImportResolver::new(&TsConfig::default());
+        let gen = TablesSimpleGenerator::new(&resolver);
+
+        let mut config = LubanTableConfig::default();
+        config.mode = "map".to_string();
+        config.index = "id".to_string();
+        config.table_name = Some("CustomTableName".to_string());
+
+        let class = ClassInfo {
+            name: "IBuffData".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "hash".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: None,
+            type_params: Default::default(),
+            luban_table: Some(config),
+        };
+
+        let output_path = PathBuf::from("out/tables.d.ts");
+        let content = gen.generate(&[&class], &output_path);
+
+        assert!(content.contains("CustomTableName: Map<number, IBuffData>"));
+        assert!(!content.contains("IBuffDataTable"));
+    }
+
+    #[test]
+    fn test_default_table_name_when_no_override() {
+        let resolver = ImportResolver::new(&TsConfig::default());
+        let gen = TablesSimpleGenerator::new(&resolver);
+
+        let mut config = LubanTableConfig::default();
+        config.mode = "map".to_string();
+        config.index = "id".to_string();
+        config.table_name = None;
+
+        let class = ClassInfo {
+            name: "MyConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "hash".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: Default::default(),
+            luban_table: Some(config),
+        };
+
+        let output_path = PathBuf::from("out/tables.d.ts");
+        let content = gen.generate(&[&class], &output_path);
+
+        assert!(content.contains("MyConfigTable: Map<number, MyConfig>"));
     }
 }

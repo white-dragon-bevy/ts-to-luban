@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="items" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="Weapon" alias="武器" parent="TsClass" comment="武器配置">
-        <var name="id" type="double"/>
-        <var name="name" type="string!"/>
-        <var name="damage" type="double#range=[1,100]"/>
-        <var name="attackSpeed" type="double#range=[0.5,2]"/>
+    <bean name="EquipmentSet" parent="TsClass" comment="装备套装">
+        <var name="weaponId" type="double#ref=items.WeaponTable"/>
+        <var name="armorId" type="double#ref=items.ArmorTable"/>
     </bean>
 
     <bean name="Armor" alias="防具" parent="TsClass" comment="防具配置">
@@ -14,9 +12,11 @@
         <var name="defense" type="double#range=[1,500]"/>
     </bean>
 
-    <bean name="EquipmentSet" parent="TsClass" comment="装备套装">
-        <var name="weaponId" type="double#ref=items.WeaponTable"/>
-        <var name="armorId" type="double#ref=items.ArmorTable"/>
+    <bean name="Weapon" alias="武器" parent="TsClass" comment="武器配置">
+        <var name="id" type="double"/>
+        <var name="name" type="string!"/>
+        <var name="damage" type="double#range=[1,100]"/>
+        <var name="attackSpeed" type="double#range=[0.5,2]"/>
     </bean>
 
     <!-- 数据表配置 -->

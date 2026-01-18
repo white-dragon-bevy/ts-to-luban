@@ -192,7 +192,11 @@ impl<'a> XmlGenerator<'a> {
         // Handle Constructor<T> fields
         if field.is_constructor {
             if let Some(constructor_type) = &field.constructor_inner_type {
-                let final_type = format!("string#constructor={}", constructor_type);
+                let mut final_type = String::from("string");
+                if field.is_optional {
+                    final_type.push('?');
+                }
+                final_type.push_str(&format!("#constructor={}", constructor_type));
 
                 let comment_attr = field
                     .comment
@@ -1169,5 +1173,56 @@ mod tests {
         assert!(!xml.contains(r#"<var name="$type""#), "XML should not contain $type field");
         // Normal fields should still be present
         assert!(xml.contains(r#"<var name="width" type="double""#), "XML should contain normal fields");
+    }
+
+    #[test]
+    fn test_optional_constructor_field() {
+        let class = ClassInfo {
+            name: "StatData".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "id".to_string(),
+                    field_type: "string".to_string(),
+                    comment: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "string".to_string(),
+                    relocate_tags: None,
+                },
+                FieldInfo {
+                    name: "component".to_string(),
+                    field_type: "string".to_string(),
+                    comment: None,
+                    is_optional: true,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: true,
+                    constructor_inner_type: Some("ComponentCls".to_string()),
+                    original_type: "Constructor<ComponentCls>".to_string(),
+                    relocate_tags: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // Optional Constructor field should have ? before #constructor
+        assert!(xml.contains(r#"type="string?#constructor=ComponentCls""#),
+            "Optional Constructor field should generate string?#constructor=ComponentCls");
     }
 }

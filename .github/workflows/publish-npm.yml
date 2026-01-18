@@ -35,10 +35,28 @@ jobs:
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
-      - name: Create bin directory placeholder
+      - name: Download release binaries
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          fi
+
           mkdir -p bin
-          echo "Binary will be downloaded during postinstall" > bin/.gitkeep
+
+          # Download Windows binary (primary target)
+          gh release download "v$VERSION" -p "luban-gen-win32-x64.exe" -O bin/luban-gen.exe
+
+          # Download other platform binaries
+          gh release download "v$VERSION" -p "luban-gen-linux-x64" -O bin/luban-gen-linux
+          gh release download "v$VERSION" -p "luban-gen-darwin-x64" -O bin/luban-gen-darwin-x64
+          gh release download "v$VERSION" -p "luban-gen-darwin-arm64" -O bin/luban-gen-darwin-arm64
+
+          chmod +x bin/luban-gen-*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to GitHub Packages
         run: npm publish

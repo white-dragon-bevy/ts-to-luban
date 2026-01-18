@@ -333,9 +333,30 @@ fn run_generation(
 
     println!("  Cached: {}, Updated: {}", unchanged, updated);
 
+    // Update table_name from table_mappings before generating XML and TypeScript
+    let table_mapping_resolver = TableMappingResolver::new(&config.table_mappings);
+    let mut final_classes_with_table_names: Vec<_> = final_classes
+        .into_iter()
+        .map(|mut class| {
+            if let Some(ref mut luban_table) = class.luban_table {
+                if cli.verbose {
+                    println!("  [checking] class: {}", class.name);
+                }
+                if let Some((_, _, table_name)) = table_mapping_resolver.resolve(&class.name) {
+                    if cli.verbose {
+                        println!("  [table_name] {} -> {:?}", class.name, table_name);
+                    }
+                    luban_table.table_name = table_name;
+                } else if cli.verbose {
+                    println!("  [no mapping] {}", class.name);
+                }
+            }
+            class
+        })
+        .collect();
+
     // Generate XML - group by (output_path, module_name)
     println!("\n[4/4] Generating XML...");
-    let table_mapping_resolver = TableMappingResolver::new(&config.table_mappings);
     let xml_generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
 
     // Group classes by (output_path, module_name)
@@ -343,7 +364,7 @@ fn run_generation(
     let default_module = config.output.module_name.clone();
     let mut grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> =
         std::collections::HashMap::new();
-    for class in final_classes.iter() {
+    for class in final_classes_with_table_names.iter() {
         let out_path = class
             .output_path
             .clone()
@@ -451,7 +472,7 @@ fn run_generation(
     // Generate bean type enums XML if configured (grouped by parent)
     if let Some(bean_types_path) = &config.output.bean_types_path {
         // Collect beans with their extends (parent), aliases, and comments
-        let beans_with_parents: Vec<(&str, String, Option<&str>, Option<&str>)> = final_classes
+        let beans_with_parents: Vec<(&str, String, Option<&str>, Option<&str>)> = final_classes_with_table_names
             .iter()
             .map(|c| {
                 (
@@ -513,7 +534,7 @@ fn run_generation(
         let ts_generator = TsCodeGenerator::new(
             resolved_path.clone(),
             ts_project_root,
-            final_classes.clone(),
+            final_classes_with_table_names.clone(),
             tsconfig,
             config.output.module_name.clone(),
         );
@@ -529,7 +550,7 @@ fn run_generation(
     println!("\n{}", "=".repeat(50));
     println!(
         "Done! Generated {} beans, {} enums to {} file(s) in {:?}",
-        final_classes.len(),
+        final_classes_with_table_names.len(),
         final_enums.len(),
         grouped.len(),
         elapsed
