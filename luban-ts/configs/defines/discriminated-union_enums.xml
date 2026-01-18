@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module name="discriminated_union" comment="自动生成的 ts enum 定义">
+
+    <enum name="ShapeType" comment="Test for $type field filtering $type is used for TypeScript discriminated unions but should not be exported to Luban">
+        <var name="Circle" value="circle"/>
+        <var name="Rectangle" value="rectangle"/>
+    </enum>
+
+</module>

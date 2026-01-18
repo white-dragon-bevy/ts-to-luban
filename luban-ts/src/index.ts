@@ -19,9 +19,18 @@ export interface LubanTableConfig {
   tags?: string;
 }
 
+
+
+/**
+ * 鲁班表装饰器
+ * @param config 
+ * @returns 
+ */
 export function LubanTable(config: LubanTableConfig): ClassDecorator {
   return () => {};
 }
+
+
 
 // === 字段装饰器 ===
 
@@ -54,6 +63,10 @@ export function Index(field: string): PropertyDecorator {
 export function Nominal(): PropertyDecorator {
   return () => {};
 }
+
+
+// 鲁班类型标记字段
+export type $type<T extends object> = T & {$type: string};
 
 // === 泛型类型 ===
 

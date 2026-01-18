@@ -6,18 +6,18 @@
         <var name="priority" type="double"/>
     </bean>
 
+    <bean name="CharacterConfig" parent="TsClass" comment="Character configuration with constructor type field">
+        <var name="id" type="double"/>
+        <var name="name" type="string"/>
+        <var name="triggerType" type="string#constructor=BaseTrigger" comment="In Excel, store class name like &quot;DamageTrigger&quot; or &quot;HealTrigger&quot;"/>
+    </bean>
+
     <bean name="DamageTrigger" parent="BaseTrigger" comment="Damage trigger implementation">
         <var name="damage" type="double"/>
     </bean>
 
     <bean name="HealTrigger" parent="BaseTrigger" comment="Heal trigger implementation">
         <var name="healAmount" type="double"/>
-    </bean>
-
-    <bean name="CharacterConfig" parent="TsClass" comment="Character configuration with constructor type field">
-        <var name="id" type="double"/>
-        <var name="name" type="string"/>
-        <var name="triggerType" type="string#constructor=BaseTrigger" comment="In Excel, store class name like &quot;DamageTrigger&quot; or &quot;HealTrigger&quot;"/>
     </bean>
 
     <!-- 数据表配置 -->

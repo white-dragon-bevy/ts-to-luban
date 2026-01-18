@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="field_visibility" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="TestPrivateFields" parent="TsClass" comment="Test class with private fields Private fields should be excluded from bean and creator generation">
-        <var name="id" type="double"/>
-        <var name="name" type="string!"/>
-    </bean>
-
     <bean name="ITestInterface" comment="Test interface - should return plain JSON object">
         <var name="id" type="double"/>
         <var name="name" type="string"/>
@@ -15,6 +10,11 @@
         <var name="id" type="double"/>
         <var name="createdAt" type="double"/>
         <var name="updatedAt" type="double"/>
+    </bean>
+
+    <bean name="TestPrivateFields" parent="TsClass" comment="Test class with private fields Private fields should be excluded from bean and creator generation">
+        <var name="id" type="double"/>
+        <var name="name" type="string!"/>
     </bean>
 
 </module>

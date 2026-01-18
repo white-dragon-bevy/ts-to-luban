@@ -1,8 +1,8 @@
-import { CharacterConfig } from "../../__examples__/constructor-type";
 import { LeaderboardEntry, GameConfig, ServerSettings } from "../../__examples__/table-modes";
-import { WeaponConfig, ArmorConfig } from "../../__examples__/virtual-fields";
 import { Item, Skill, Monster, Player, Difficulty, Team } from "../../__examples__/all-validators";
+import { CharacterConfig } from "../../__examples__/constructor-type";
 import { Weapon, Armor } from "../../__examples__/items";
+import { WeaponConfig, ArmorConfig } from "../../__examples__/virtual-fields";
 
 export interface AllTables {
     ItemTable: Map<number, Item>;

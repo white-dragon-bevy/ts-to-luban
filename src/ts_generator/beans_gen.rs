@@ -22,10 +22,11 @@ impl<'a> BeansGenerator<'a> {
     ) -> String {
         let mut lines = Vec::new();
 
-        // Filter to only classes (not interfaces)
+        // Filter to only classes (not interfaces) and deduplicate by name
+        let mut seen = std::collections::HashSet::new();
         let classes: Vec<_> = all_classes
             .iter()
-            .filter(|c| !c.is_interface)
+            .filter(|c| !c.is_interface && seen.insert(c.name.clone()))
             .copied()
             .collect();
 

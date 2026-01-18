@@ -33,8 +33,23 @@ impl<'a> XmlGenerator<'a> {
             String::new(),
         ];
 
-        // Generate beans
+        // Deduplicate classes by name, prioritizing @LubanTable classes
+        let mut seen: std::collections::HashMap<String, &ClassInfo> = std::collections::HashMap::new();
         for class in classes {
+            let name = &class.name;
+            if let Some(existing) = seen.get(name) {
+                // If existing class has no @LubanTable but current has, replace it
+                if existing.luban_table.is_none() && class.luban_table.is_some() {
+                    seen.insert(name.clone(), class);
+                }
+            } else {
+                seen.insert(name.clone(), class);
+            }
+        }
+        let unique_classes: Vec<_> = seen.values().collect();
+
+        // Generate beans
+        for class in &unique_classes {
             self.generate_bean(&mut lines, class, classes);
             lines.push(String::new());
         }
@@ -144,8 +159,9 @@ impl<'a> XmlGenerator<'a> {
         }
 
         // Only generate fields that are not redeclared from parent classes
+        // Skip $type field (used for TypeScript discriminated unions, not needed in Luban)
         for field in &class.fields {
-            if !parent_field_names.contains(field.name.as_str()) {
+            if !parent_field_names.contains(field.name.as_str()) && field.name != "$type" {
                 self.generate_field(lines, field);
             }
         }
@@ -1101,5 +1117,57 @@ mod tests {
             ),
             "XML should combine relocate_tags and ObjectFactory tag"
         );
+    }
+
+    #[test]
+    fn test_skip_dollar_type_field() {
+        let class = ClassInfo {
+            name: "ShapeInfo".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "$type".to_string(),
+                    field_type: "ShapeType".to_string(),
+                    comment: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "ShapeType".to_string(),
+                    relocate_tags: None,
+                },
+                FieldInfo {
+                    name: "width".to_string(),
+                    field_type: "number".to_string(),
+                    comment: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "number".to_string(),
+                    relocate_tags: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // $type field should NOT be in the output
+        assert!(!xml.contains(r#"<var name="$type""#), "XML should not contain $type field");
+        // Normal fields should still be present
+        assert!(xml.contains(r#"<var name="width" type="double""#), "XML should contain normal fields");
     }
 }

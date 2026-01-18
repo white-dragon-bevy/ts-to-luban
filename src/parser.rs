@@ -458,12 +458,19 @@ impl TsParser {
                             if let Some(mut field) =
                                 self.extract_param_prop_with_type_params(prop, &type_params)
                             {
+                                // Try to get inline comment first (from parameter position)
+                                if field.comment.is_none() {
+                                    field.comment = self.get_leading_comment(prop.span.lo, comments);
+                                }
+
                                 // Check @param comment (constructor JSDoc first, then class-level)
-                                if let Some(comment) = ctor_param_comments
-                                    .get(&field.name)
-                                    .or_else(|| param_comments.get(&field.name))
-                                {
-                                    field.comment = Some(comment.clone());
+                                if field.comment.is_none() {
+                                    if let Some(comment) = ctor_param_comments
+                                        .get(&field.name)
+                                        .or_else(|| param_comments.get(&field.name))
+                                    {
+                                        field.comment = Some(comment.clone());
+                                    }
                                 }
                                 fields.push(field);
                             }
@@ -636,7 +643,17 @@ impl TsParser {
                 ident.type_ann.as_ref(),
                 ident.id.optional,
             ),
-            TsParamPropParam::Assign(_) => return None,
+            TsParamPropParam::Assign(assign_pat) => {
+                // 处理带默认值的参数，如 `public flyingDebrisCount = 10`
+                match &*assign_pat.left {
+                    Pat::Ident(ident) => (
+                        ident.id.sym.to_string(),
+                        ident.type_ann.as_ref(),
+                        ident.id.optional,
+                    ),
+                    _ => return None,
+                }
+            }
         };
 
         // Skip internal marker fields
@@ -647,13 +664,20 @@ impl TsParser {
 
         let type_info = type_ann
             .map(|ann| self.convert_type_extended(&ann.type_ann, type_params))
-            .unwrap_or_else(|| TypeInfo {
-                field_type: "string".to_string(),
-                original_type: "string".to_string(),
-                is_object_factory: false,
-                factory_inner_type: None,
-                is_constructor: false,
-                constructor_inner_type: None,
+            .unwrap_or_else(|| {
+                // 如果没有类型注解，尝试从默认值推断类型
+                if let TsParamPropParam::Assign(assign_pat) = &prop.param {
+                    self.infer_type_from_initializer(&assign_pat.right, type_params)
+                } else {
+                    TypeInfo {
+                        field_type: "string".to_string(),
+                        original_type: "string".to_string(),
+                        is_object_factory: false,
+                        factory_inner_type: None,
+                        is_constructor: false,
+                        constructor_inner_type: None,
+                    }
+                }
             });
 
         // Parse field decorators from TsParamProp
@@ -807,6 +831,29 @@ impl TsParser {
         ts_type: &TsType,
         type_params: &HashMap<String, String>,
     ) -> TypeInfo {
+        // Check for $type<T> pattern first - extract inner type directly
+        if let TsType::TsTypeRef(type_ref) = ts_type {
+            if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                if ident.sym.to_string() == "$type" {
+                    if let Some(params) = &type_ref.type_params {
+                        if let Some(first) = params.params.first() {
+                            let inner_type = self.convert_type_with_params(first, type_params);
+                            // Construct original_type manually to preserve $type<T> syntax
+                            let original_type = format!("$type<{}>", inner_type);
+                            return TypeInfo {
+                                field_type: inner_type.clone(),
+                                original_type,
+                                is_object_factory: false,
+                                factory_inner_type: None,
+                                is_constructor: false,
+                                constructor_inner_type: None,
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
         let original_type = self.convert_type_with_params(ts_type, type_params);
 
         // Check for ObjectFactory<T> pattern
@@ -904,7 +951,7 @@ impl TsParser {
             }
             // For literals without type assertion, infer the literal type
             Expr::Lit(Lit::Num(_)) => TypeInfo {
-                field_type: "number".to_string(),
+                field_type: "double".to_string(),
                 original_type: "number".to_string(),
                 is_object_factory: false,
                 factory_inner_type: None,
@@ -956,6 +1003,29 @@ impl TsParser {
                 is_constructor: false,
                 constructor_inner_type: None,
             },
+            // For new expressions: `new Vector3(10, 60, 10)`
+            Expr::New(new_expr) => {
+                if let Expr::Ident(ident) = &*new_expr.callee {
+                    let type_name = ident.sym.to_string();
+                    TypeInfo {
+                        field_type: type_name.clone(),
+                        original_type: type_name,
+                        is_object_factory: false,
+                        factory_inner_type: None,
+                        is_constructor: false,
+                        constructor_inner_type: None,
+                    }
+                } else {
+                    TypeInfo {
+                        field_type: "unknown".to_string(),
+                        original_type: "unknown".to_string(),
+                        is_object_factory: false,
+                        factory_inner_type: None,
+                        is_constructor: false,
+                        constructor_inner_type: None,
+                    }
+                }
+            }
             // Default to string for other cases
             _ => TypeInfo {
                 field_type: "string".to_string(),
@@ -975,7 +1045,7 @@ impl TsParser {
     ) -> String {
         match ts_type {
             TsType::TsKeywordType(kw) => match kw.kind {
-                TsKeywordTypeKind::TsNumberKeyword => "number".to_string(),
+                TsKeywordTypeKind::TsNumberKeyword => "double".to_string(),
                 TsKeywordTypeKind::TsStringKeyword => "string".to_string(),
                 TsKeywordTypeKind::TsBooleanKeyword => "bool".to_string(),
                 _ => "string".to_string(),
@@ -996,6 +1066,15 @@ impl TsParser {
                 }
 
                 match type_name.as_str() {
+                    // Handle $type<T> - extract inner type directly
+                    "$type" => {
+                        if let Some(params) = &type_ref.type_params {
+                            if let Some(first) = params.params.first() {
+                                return self.convert_type_with_params(first, type_params);
+                            }
+                        }
+                        "string".to_string()
+                    }
                     "Array" | "ReadonlyArray" => {
                         if let Some(params) = &type_ref.type_params {
                             if let Some(first) = params.params.first() {
@@ -1270,7 +1349,7 @@ export class MyClass {
         assert_eq!(classes[0].fields.len(), 3);
         assert_eq!(classes[0].fields[0].name, "name");
         assert_eq!(classes[0].fields[0].field_type, "string");
-        assert_eq!(classes[0].fields[1].field_type, "number");
+        assert_eq!(classes[0].fields[1].field_type, "double");
         assert!(classes[0].fields[2].is_optional);
     }
 
@@ -1308,7 +1387,7 @@ export class MyClass {
         let classes = parser.parse_file(file.path()).unwrap();
 
         assert_eq!(classes[0].fields[0].field_type, "list,string");
-        assert_eq!(classes[0].fields[1].field_type, "list,number");
+        assert_eq!(classes[0].fields[1].field_type, "list,double");
     }
 
     #[test]
@@ -1325,7 +1404,7 @@ export class MyClass {
         let parser = TsParser::new();
         let classes = parser.parse_file(file.path()).unwrap();
 
-        assert_eq!(classes[0].fields[0].field_type, "map,string,number");
+        assert_eq!(classes[0].fields[0].field_type, "map,string,double");
         assert_eq!(classes[0].fields[1].field_type, "map,string,bool");
     }
 
@@ -1731,5 +1810,99 @@ export enum ExportedEnum {
         // normalField: string
         assert_eq!(class.fields[2].name, "normalField");
         assert!(!class.fields[2].is_constructor);
+    }
+
+    #[test]
+    fn test_parse_dollar_type_field() {
+        let ts_code = r#"
+export class TestClass {
+    public foo: $type<Bar>;
+    public items: $type<Item>[];
+    public map: Map<string, $type<Value>>;
+    public normalField: string;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 4);
+
+        // foo: $type<Bar> → type="Bar"
+        assert_eq!(class.fields[0].name, "foo");
+        assert_eq!(class.fields[0].field_type, "Bar");
+        assert_eq!(class.fields[0].original_type, "$type<Bar>");
+
+        // items: $type<Item>[] → type="list,Item"
+        assert_eq!(class.fields[1].name, "items");
+        assert_eq!(class.fields[1].field_type, "list,Item");
+
+        // map: Map<string, $type<Value>> → type="map,string,Value"
+        assert_eq!(class.fields[2].name, "map");
+        assert_eq!(class.fields[2].field_type, "map,string,Value");
+
+        // normalField: string
+        assert_eq!(class.fields[3].name, "normalField");
+        assert_eq!(class.fields[3].field_type, "string");
+    }
+
+    #[test]
+    fn test_constructor_params_with_defaults() {
+        let ts_code = r#"
+export class GroundBreakAction {
+    constructor(
+        /** 碎石数量 */
+        public debrisCount: number,
+        /** 分布半径 */
+        public distributionRadius: number,
+        /** 飞溅碎石数量 */
+        public flyingDebrisCount = 10,
+        /** 飞溅爆发速度 */
+        public flyingBurstVelocity = new Vector3(10, 60, 10),
+        /** 圈层数量 */
+        public layers = 3,
+        /** 是否启用交错排列 */
+        public enableStaggered = true,
+    ) {}
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.name, "GroundBreakAction");
+
+        // 应该解析所有 6 个参数，包括带默认值的
+        assert_eq!(class.fields.len(), 6, "应该解析所有构造函数参数，包括带默认值的");
+
+        // 无默认值的参数
+        assert_eq!(class.fields[0].name, "debrisCount");
+        assert_eq!(class.fields[0].field_type, "double");
+        assert_eq!(class.fields[0].comment, Some("碎石数量".to_string()));
+
+        assert_eq!(class.fields[1].name, "distributionRadius");
+        assert_eq!(class.fields[1].field_type, "double");
+
+        // 带默认值的参数
+        assert_eq!(class.fields[2].name, "flyingDebrisCount");
+        assert_eq!(class.fields[2].field_type, "double");
+        assert_eq!(class.fields[2].comment, Some("飞溅碎石数量".to_string()));
+
+        assert_eq!(class.fields[3].name, "flyingBurstVelocity");
+        assert_eq!(class.fields[3].field_type, "Vector3");
+
+        assert_eq!(class.fields[4].name, "layers");
+        assert_eq!(class.fields[4].field_type, "double");
+
+        assert_eq!(class.fields[5].name, "enableStaggered");
+        assert_eq!(class.fields[5].field_type, "bool");
     }
 }

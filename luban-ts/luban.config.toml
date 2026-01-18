@@ -59,6 +59,20 @@ path = "src/__examples__/virtual-fields.ts"
 output_path = "configs/defines/virtual-fields.xml"
 module_name = "virtual_fields"
 
+# 第七个数据源 - 判别联合类型测试（$type 字段过滤）
+[[sources]]
+type = "file"
+path = "src/__examples__/discriminated-union.ts"
+output_path = "configs/defines/discriminated-union.xml"
+module_name = "discriminated_union"
+
+# 第八个数据源 - $type<T> 类型包装器测试
+[[sources]]
+type = "file"
+path = "src/__examples__/dollar-type.ts"
+output_path = "configs/defines/dollar-type.xml"
+module_name = "dollar_type"
+
 # 虚拟字段配置：WeaponConfig
 [[virtual_fields]]
 class = "WeaponConfig"
