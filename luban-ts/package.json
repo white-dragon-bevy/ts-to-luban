@@ -30,7 +30,6 @@
     "@rbxts/rbx-better-signal": "^2.1.0",
     "@rbxts/rewire": "^0.3.0",
     "@rbxts/services": "^1.6.0",
-    "@rbxts/test-cloud-testez": "^0.5.11",
-    "@white-dragon-bevy/luban-cli": "link:D:/projects/white-dragon-bevy/luban"
+    "@rbxts/test-cloud-testez": "^0.5.11"
   }
 }
