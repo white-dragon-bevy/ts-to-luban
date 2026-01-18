@@ -1,6 +1,6 @@
 {
   "name": "@white-dragon-bevy/ts-to-luban",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "main": "out/init.lua",
   "types": "out/index.d.ts",
   "type": "module",
