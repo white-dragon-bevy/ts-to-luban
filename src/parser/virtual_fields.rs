@@ -43,6 +43,7 @@ fn convert_virtual_field(field_config: &VirtualField) -> FieldInfo {
         name: field_config.name.clone(),
         field_type: field_config.field_type.clone(),
         comment: field_config.comment.clone(),
+        alias: None,
         is_optional: field_config.optional.unwrap_or(false),
         validators,
         is_object_factory: false,

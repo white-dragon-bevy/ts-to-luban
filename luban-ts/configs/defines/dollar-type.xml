@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="dollar_type" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="EntityConfig" parent="TsClass" comment="使用 $type&lt;T&gt; 包装器的配置类">
-        <var name="entityType" type="BaseEntity" comment="实体类型 - 使用 $type 包装"/>
-        <var name="entities" type="list,BaseEntity" comment="实体列表"/>
-        <var name="entityMap" type="map,string,BaseEntity" comment="实体映射"/>
-        <var name="description" type="string" comment="普通字段"/>
+    <bean name="BaseEntity" parent="TsClass" comment="$type&lt;T&gt; 类型包装器示例 $type&lt;T&gt; 会在生成时提取内部类型 T，忽略 $type 包装器">
+        <var name="id" type="double"/>
+        <var name="name" type="string"/>
     </bean>
 
     <bean name="ComplexConfig" parent="TsClass" comment="嵌套使用示例">
@@ -18,13 +16,15 @@
         <var name="hp" type="double"/>
     </bean>
 
-    <bean name="Hero" parent="BaseEntity">
-        <var name="level" type="double"/>
+    <bean name="EntityConfig" parent="TsClass" comment="使用 $type&lt;T&gt; 包装器的配置类">
+        <var name="entityType" type="BaseEntity" comment="实体类型 - 使用 $type 包装"/>
+        <var name="entities" type="list,BaseEntity" comment="实体列表"/>
+        <var name="entityMap" type="map,string,BaseEntity" comment="实体映射"/>
+        <var name="description" type="string" comment="普通字段"/>
     </bean>
 
-    <bean name="BaseEntity" parent="TsClass" comment="$type&lt;T&gt; 类型包装器示例 $type&lt;T&gt; 会在生成时提取内部类型 T，忽略 $type 包装器">
-        <var name="id" type="double"/>
-        <var name="name" type="string"/>
+    <bean name="Hero" parent="BaseEntity">
+        <var name="level" type="double"/>
     </bean>
 
 </module>

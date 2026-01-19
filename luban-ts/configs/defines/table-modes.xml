@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="modes" comment="自动生成的 ts class Bean 定义">
 
+    <bean name="GameConfig" parent="TsClass" comment="游戏全局配置 - one mode (单条记录)">
+        <var name="id" type="double"/>
+        <var name="maxPlayers" type="double"/>
+        <var name="gameVersion" type="string"/>
+        <var name="debugMode" type="bool"/>
+    </bean>
+
     <bean name="LeaderboardEntry" parent="TsClass" comment="排行榜条目 - list mode (纯数组，无索引)">
         <var name="rank" type="double"/>
         <var name="playerId" type="double"/>
@@ -13,16 +20,9 @@
         <var name="tickRate" type="double"/>
     </bean>
 
-    <bean name="GameConfig" parent="TsClass" comment="游戏全局配置 - one mode (单条记录)">
-        <var name="id" type="double"/>
-        <var name="maxPlayers" type="double"/>
-        <var name="gameVersion" type="string"/>
-        <var name="debugMode" type="bool"/>
-    </bean>
-
     <!-- 数据表配置 -->
-    <table name="LeaderboardEntryTable" value="LeaderboardEntry" mode="list" index="rank" input="*@../datas/leaderboard-entry/"/>
     <table name="GameConfigTable" value="GameConfig" mode="one" index="" input="../datas/game-config/"/>
+    <table name="LeaderboardEntryTable" value="LeaderboardEntry" mode="list" index="rank" input="*@../datas/leaderboard-entry/"/>
     <table name="ServerSettingsTable" value="ServerSettings" mode="singleton" index="" input="../datas/server-settings/"/>
 
 </module>

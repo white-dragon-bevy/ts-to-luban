@@ -328,6 +328,25 @@ impl TsParser {
         })
     }
 
+    /// Get raw leading comment text (without parsing)
+    fn get_raw_leading_comment(
+        &self,
+        pos: BytePos,
+        comments: &SingleThreadedComments,
+    ) -> Option<String> {
+        comments.get_leading(pos).and_then(|cs| {
+            // Try JSDoc block comment first (starts with *)
+            if let Some(jsdoc) = cs.iter().filter(|c| c.text.starts_with('*')).last() {
+                return Some(jsdoc.text.to_string());
+            }
+            // Fall back to line comment (//)
+            cs.iter()
+                .last()
+                .map(|c| c.text.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+    }
+
     fn get_param_comments(
         &self,
         pos: BytePos,
@@ -688,6 +707,7 @@ impl TsParser {
             name,
             field_type: type_info.field_type,
             comment: None,
+            alias: None,
             is_optional,
             validators,
             is_object_factory: type_info.is_object_factory,
@@ -749,8 +769,17 @@ impl TsParser {
             }
         };
 
-        // Extract field comment
-        let comment = self.get_leading_comment(prop.span.lo, comments);
+        // Extract field comment (raw) for @alias parsing
+        let raw_comment = self.get_raw_leading_comment(prop.span.lo, comments);
+
+        // Parse @alias tag from field comment
+        let field_alias = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "alias"));
+
+        // Get cleaned comment (without @alias line)
+        let comment = raw_comment
+            .as_ref()
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .filter(|c| !c.is_empty());
 
         // Parse field decorators from ClassProp
         let validators = parse_field_decorators(&prop.decorators);
@@ -759,6 +788,7 @@ impl TsParser {
             name,
             field_type: type_info.field_type,
             comment,
+            alias: field_alias,
             is_optional: prop.is_optional,
             validators,
             is_object_factory: type_info.is_object_factory,
@@ -803,13 +833,23 @@ impl TsParser {
                 constructor_inner_type: None,
             });
 
-        // Extract field comment
-        let comment = self.get_leading_comment(prop.span.lo, comments);
+        // Extract field comment (raw) for @alias parsing
+        let raw_comment = self.get_raw_leading_comment(prop.span.lo, comments);
+
+        // Parse @alias tag from field comment
+        let field_alias = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "alias"));
+
+        // Get cleaned comment (without @alias line)
+        let comment = raw_comment
+            .as_ref()
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .filter(|c| !c.is_empty());
 
         Some(FieldInfo {
             name,
             field_type: type_info.field_type,
             comment,
+            alias: field_alias,
             is_optional: prop.optional,
             validators: FieldValidators::default(),
             is_object_factory: type_info.is_object_factory,
@@ -1929,5 +1969,94 @@ export class GroundBreakAction {
 
         assert_eq!(class.fields[5].name, "enableStaggered");
         assert_eq!(class.fields[5].field_type, "bool");
+    }
+
+    #[test]
+    fn test_parse_field_alias_tag() {
+        let ts_code = r#"
+export class ItemConfig {
+    /**
+     * 物品ID
+     * @alias="物品编号"
+     */
+    public id: number;
+
+    /**
+     * @alias:名称
+     */
+    public name: string;
+
+    /** 无别名字段 */
+    public value: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 3);
+
+        // id field with @alias="物品编号"
+        assert_eq!(class.fields[0].name, "id");
+        assert_eq!(class.fields[0].alias, Some("物品编号".to_string()));
+        assert_eq!(class.fields[0].comment, Some("物品ID".to_string()));
+
+        // name field with @alias:名称
+        assert_eq!(class.fields[1].name, "name");
+        assert_eq!(class.fields[1].alias, Some("名称".to_string()));
+        assert_eq!(class.fields[1].comment, None);
+
+        // value field without alias
+        assert_eq!(class.fields[2].name, "value");
+        assert_eq!(class.fields[2].alias, None);
+        assert_eq!(class.fields[2].comment, Some("无别名字段".to_string()));
+    }
+
+    #[test]
+    fn test_parse_interface_field_alias_tag() {
+        let ts_code = r#"
+export interface MonsterConfig {
+    /**
+     * 怪物ID
+     * @alias="怪物编号"
+     */
+    id: number;
+
+    /** @alias:怪物名 */
+    name: string;
+
+    /** 普通字段 */
+    hp: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert!(class.is_interface);
+        assert_eq!(class.fields.len(), 3);
+
+        // id field with @alias="怪物编号"
+        assert_eq!(class.fields[0].name, "id");
+        assert_eq!(class.fields[0].alias, Some("怪物编号".to_string()));
+        assert_eq!(class.fields[0].comment, Some("怪物ID".to_string()));
+
+        // name field with @alias:怪物名
+        assert_eq!(class.fields[1].name, "name");
+        assert_eq!(class.fields[1].alias, Some("怪物名".to_string()));
+        assert_eq!(class.fields[1].comment, None);
+
+        // hp field without alias
+        assert_eq!(class.fields[2].name, "hp");
+        assert_eq!(class.fields[2].alias, None);
+        assert_eq!(class.fields[2].comment, Some("普通字段".to_string()));
     }
 }

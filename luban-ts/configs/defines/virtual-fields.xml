@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="virtual_fields" comment="自动生成的 ts class Bean 定义">
 
+    <bean name="ArmorConfig" parent="TsClass" comment="装甲配置">
+        <var name="id" type="double"/>
+        <var name="name" type="string"/>
+        <var name="defenseStat" type="ScalingStat" comment="防御属性" tags="relocateTo=TScalingStat,prefix=_defense"/>
+    </bean>
+
     <bean name="ScalingStat" parent="TsClass" comment="属性缩放配置">
         <var name="type" type="string"/>
         <var name="value" type="double"/>
@@ -13,14 +19,8 @@
         <var name="subStat" type="ScalingStat" comment="副属性" tags="relocateTo=TScalingStat,prefix=_sub"/>
     </bean>
 
-    <bean name="ArmorConfig" parent="TsClass" comment="装甲配置">
-        <var name="id" type="double"/>
-        <var name="name" type="string"/>
-        <var name="defenseStat" type="ScalingStat" comment="防御属性" tags="relocateTo=TScalingStat,prefix=_defense"/>
-    </bean>
-
     <!-- 数据表配置 -->
-    <table name="WeaponConfigTable" value="WeaponConfig" mode="map" index="id" input="*@../datas/equipment/weapon-config/"/>
     <table name="ArmorConfigTable" value="ArmorConfig" mode="map" index="id" input="*@../datas/equipment/armor-config/"/>
+    <table name="WeaponConfigTable" value="WeaponConfig" mode="map" index="id" input="*@../datas/equipment/weapon-config/"/>
 
 </module>

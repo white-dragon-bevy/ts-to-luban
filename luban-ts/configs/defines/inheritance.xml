@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <module name="inheritance" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="StandaloneUnit" parent="TsClass" comment="独立单位 - 无继承">
-        <var name="data" type="string"/>
+    <bean name="BaseUnit" parent="TsClass" comment="基础单位">
+        <var name="id" type="double"/>
+        <var name="name" type="string!"/>
     </bean>
 
     <bean name="CharacterUnit" parent="BaseUnit" comment="角色单位 - 继承 BaseUnit Note: In roblox-ts, child classes must redeclare parent fields for proper property access">
@@ -10,18 +11,17 @@
         <var name="hp" type="double"/>
     </bean>
 
+    <bean name="NPCUnit" parent="CharacterUnit" comment="NPC单位 - 继承 CharacterUnit Note: In roblox-ts, child classes must redeclare parent fields for proper property access">
+        <var name="dialogue" type="list,string"/>
+    </bean>
+
     <bean name="PlayerUnit" parent="CharacterUnit" comment="玩家单位 - 继承 CharacterUnit Note: In roblox-ts, child classes must redeclare parent fields for proper property access">
         <var name="experience" type="double"/>
         <var name="accountId" type="string!"/>
     </bean>
 
-    <bean name="NPCUnit" parent="CharacterUnit" comment="NPC单位 - 继承 CharacterUnit Note: In roblox-ts, child classes must redeclare parent fields for proper property access">
-        <var name="dialogue" type="list,string"/>
-    </bean>
-
-    <bean name="BaseUnit" parent="TsClass" comment="基础单位">
-        <var name="id" type="double"/>
-        <var name="name" type="string!"/>
+    <bean name="StandaloneUnit" parent="TsClass" comment="独立单位 - 无继承">
+        <var name="data" type="string"/>
     </bean>
 
 </module>

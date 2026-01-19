@@ -3,11 +3,14 @@ use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators};
 use crate::table_mapping::TableMappingResolver;
 use crate::table_registry::TableRegistry;
 use crate::type_mapper::TypeMapper;
+use std::collections::HashMap;
 
 pub struct XmlGenerator<'a> {
     type_mapper: &'a TypeMapper,
     table_registry: &'a TableRegistry,
     table_mapping_resolver: &'a TableMappingResolver,
+    /// Mapping from type name to module name (for cross-module type resolution)
+    type_to_module: HashMap<String, String>,
 }
 
 impl<'a> XmlGenerator<'a> {
@@ -20,10 +23,36 @@ impl<'a> XmlGenerator<'a> {
             type_mapper,
             table_registry,
             table_mapping_resolver,
+            type_to_module: HashMap::new(),
+        }
+    }
+
+    /// Create a new XmlGenerator with a pre-built type-to-module mapping
+    pub fn with_type_mapping(
+        type_mapper: &'a TypeMapper,
+        table_registry: &'a TableRegistry,
+        table_mapping_resolver: &'a TableMappingResolver,
+        type_to_module: HashMap<String, String>,
+    ) -> Self {
+        Self {
+            type_mapper,
+            table_registry,
+            table_mapping_resolver,
+            type_to_module,
         }
     }
 
     pub fn generate(&self, classes: &[ClassInfo], module_name: &str) -> String {
+        // For backward compatibility, use classes as all_classes
+        self.generate_with_all_classes(classes, module_name, classes)
+    }
+
+    pub fn generate_with_all_classes(
+        &self,
+        classes: &[ClassInfo],
+        module_name: &str,
+        all_classes: &[ClassInfo],
+    ) -> String {
         let mut lines = vec![
             r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
             format!(
@@ -32,6 +61,15 @@ impl<'a> XmlGenerator<'a> {
             ),
             String::new(),
         ];
+
+        // Build class name -> module name mapping from all_classes
+        // and merge with self.type_to_module (which includes enums)
+        let mut class_to_module: HashMap<String, String> = self.type_to_module.clone();
+        for c in all_classes {
+            if let Some(m) = &c.module_name {
+                class_to_module.insert(c.name.clone(), m.clone());
+            }
+        }
 
         // Deduplicate classes by name, prioritizing @LubanTable classes
         let mut seen: std::collections::HashMap<String, &ClassInfo> = std::collections::HashMap::new();
@@ -52,7 +90,7 @@ impl<'a> XmlGenerator<'a> {
 
         // Generate beans
         for class in &unique_classes {
-            self.generate_bean(&mut lines, class, classes);
+            self.generate_bean_with_module_map(&mut lines, class, all_classes, module_name, &class_to_module);
             lines.push(String::new());
         }
 
@@ -164,6 +202,19 @@ impl<'a> XmlGenerator<'a> {
     }
 
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo, all_classes: &[ClassInfo]) {
+        // For backward compatibility, use empty module map
+        let class_to_module: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        self.generate_bean_with_module_map(lines, class, all_classes, "", &class_to_module);
+    }
+
+    fn generate_bean_with_module_map(
+        &self,
+        lines: &mut Vec<String>,
+        class: &ClassInfo,
+        all_classes: &[ClassInfo],
+        current_module: &str,
+        class_to_module: &std::collections::HashMap<String, String>,
+    ) {
         let parent = if class.is_interface {
             // Interface: no parent if no extends (not affected by the change)
             class.extends.clone().unwrap_or_default()
@@ -171,6 +222,9 @@ impl<'a> XmlGenerator<'a> {
             // Class: resolve parent based on extends, implements, or default to TsClass
             self.resolve_class_parent(class, all_classes)
         };
+
+        // Resolve parent with module prefix if needed
+        let resolved_parent = self.resolve_type_with_module(&parent, current_module, class_to_module);
 
         let alias_attr = class
             .alias
@@ -184,10 +238,10 @@ impl<'a> XmlGenerator<'a> {
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
-        let parent_attr = if parent.is_empty() {
+        let parent_attr = if resolved_parent.is_empty() {
             String::new()
         } else {
-            format!(r#" parent="{}""#, parent)
+            format!(r#" parent="{}""#, resolved_parent)
         };
 
         lines.push(format!(
@@ -196,6 +250,7 @@ impl<'a> XmlGenerator<'a> {
         ));
 
         // Collect parent field names to skip redeclared fields
+        // Note: we need to look up parent by simple name, not qualified name
         let mut parent_field_names = std::collections::HashSet::new();
         let mut current_parent = if parent.is_empty() {
             None
@@ -217,11 +272,34 @@ impl<'a> XmlGenerator<'a> {
         // Skip $type field (used for TypeScript discriminated unions, not needed in Luban)
         for field in &class.fields {
             if !parent_field_names.contains(field.name.as_str()) && field.name != "$type" {
-                self.generate_field(lines, field);
+                self.generate_field_with_module_map(lines, field, current_module, class_to_module);
             }
         }
 
         lines.push("    </bean>".to_string());
+    }
+
+    /// Resolve a type name with module prefix if it's from a different module
+    fn resolve_type_with_module(
+        &self,
+        type_name: &str,
+        current_module: &str,
+        class_to_module: &HashMap<String, String>,
+    ) -> String {
+        if type_name.is_empty() {
+            return String::new();
+        }
+
+        // Check if this type is in the class_to_module mapping
+        if let Some(target_module) = class_to_module.get(type_name) {
+            // If the type is from a different module, add the module prefix
+            if target_module != current_module && !target_module.is_empty() {
+                return format!("{}.{}", target_module, type_name);
+            }
+        }
+
+        // Return the type name as-is (same module or not in mapping)
+        type_name.to_string()
     }
 
     /// Resolves the parent for a class based on:
@@ -244,19 +322,38 @@ impl<'a> XmlGenerator<'a> {
     }
 
     fn generate_field(&self, lines: &mut Vec<String>, field: &FieldInfo) {
+        // For backward compatibility, use empty module map
+        let class_to_module: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        self.generate_field_with_module_map(lines, field, "", &class_to_module);
+    }
+
+    fn generate_field_with_module_map(
+        &self,
+        lines: &mut Vec<String>,
+        field: &FieldInfo,
+        current_module: &str,
+        class_to_module: &std::collections::HashMap<String, String>,
+    ) {
         // Handle Constructor<T> fields
         if field.is_constructor {
             if let Some(constructor_type) = &field.constructor_inner_type {
+                let resolved_constructor_type = self.resolve_type_with_module(constructor_type, current_module, class_to_module);
                 let mut final_type = String::from("string");
                 if field.is_optional {
                     final_type.push('?');
                 }
-                final_type.push_str(&format!("#constructor={}", constructor_type));
+                final_type.push_str(&format!("#constructor={}", resolved_constructor_type));
 
                 let comment_attr = field
                     .comment
                     .as_ref()
                     .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
+                    .unwrap_or_default();
+
+                let alias_attr = field
+                    .alias
+                    .as_ref()
+                    .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
                     .unwrap_or_default();
 
                 let tags_attr = field
@@ -266,8 +363,8 @@ impl<'a> XmlGenerator<'a> {
                     .unwrap_or_default();
 
                 lines.push(format!(
-                    r#"        <var name="{}" type="{}"{}{}/>"#,
-                    field.name, final_type, comment_attr, tags_attr
+                    r#"        <var name="{}" type="{}"{}{}{}/>"#,
+                    field.name, final_type, alias_attr, comment_attr, tags_attr
                 ));
                 return;
             }
@@ -282,6 +379,9 @@ impl<'a> XmlGenerator<'a> {
             mapped_type = "int".to_string();
         }
 
+        // Resolve type references with module prefix
+        mapped_type = self.resolve_full_type_with_module(&mapped_type, current_module, class_to_module);
+
         // Check if this is a container type (list, map, array, set)
         let is_container = mapped_type.starts_with("list,")
             || mapped_type.starts_with("map,")
@@ -290,7 +390,7 @@ impl<'a> XmlGenerator<'a> {
 
         let final_type = if is_container {
             // Handle container types with size/index validators
-            self.apply_container_validators(&mapped_type, validators)
+            self.apply_container_validators_with_module(&mapped_type, validators, current_module, class_to_module)
         } else {
             // Handle scalar types with validators
             self.apply_scalar_validators(&mapped_type, validators, field.is_optional)
@@ -300,6 +400,12 @@ impl<'a> XmlGenerator<'a> {
             .comment
             .as_ref()
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
+            .unwrap_or_default();
+
+        let alias_attr = field
+            .alias
+            .as_ref()
+            .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
         // Build tags: relocate_tags + injectData for ObjectFactory
@@ -322,9 +428,51 @@ impl<'a> XmlGenerator<'a> {
         };
 
         lines.push(format!(
-            r#"        <var name="{}" type="{}"{}{}/>"#,
-            field.name, final_type, comment_attr, tags_attr
+            r#"        <var name="{}" type="{}"{}{}{}/>"#,
+            field.name, final_type, alias_attr, comment_attr, tags_attr
         ));
+    }
+
+    /// Resolve a full type string (including list,T and map,K,V) with module prefixes
+    fn resolve_full_type_with_module(
+        &self,
+        type_str: &str,
+        current_module: &str,
+        class_to_module: &std::collections::HashMap<String, String>,
+    ) -> String {
+        // Handle list,T
+        if type_str.starts_with("list,") {
+            let element = &type_str[5..];
+            let resolved_element = self.resolve_type_with_module(element, current_module, class_to_module);
+            return format!("list,{}", resolved_element);
+        }
+
+        // Handle map,K,V
+        if type_str.starts_with("map,") {
+            let parts: Vec<&str> = type_str[4..].splitn(2, ',').collect();
+            if parts.len() == 2 {
+                let resolved_key = self.resolve_type_with_module(parts[0], current_module, class_to_module);
+                let resolved_value = self.resolve_type_with_module(parts[1], current_module, class_to_module);
+                return format!("map,{},{}", resolved_key, resolved_value);
+            }
+        }
+
+        // Handle array,T
+        if type_str.starts_with("array,") {
+            let element = &type_str[6..];
+            let resolved_element = self.resolve_type_with_module(element, current_module, class_to_module);
+            return format!("array,{}", resolved_element);
+        }
+
+        // Handle set,T
+        if type_str.starts_with("set,") {
+            let element = &type_str[4..];
+            let resolved_element = self.resolve_type_with_module(element, current_module, class_to_module);
+            return format!("set,{}", resolved_element);
+        }
+
+        // Simple type
+        self.resolve_type_with_module(type_str, current_module, class_to_module)
     }
 
     /// Apply validators to scalar types
@@ -413,6 +561,69 @@ impl<'a> XmlGenerator<'a> {
         }
 
         // Build element type with its validators (ref, range, set, required)
+        let element_validators = FieldValidators {
+            ref_target: validators.ref_target.clone(),
+            range: validators.range,
+            required: validators.required,
+            set_values: validators.set_values.clone(),
+            // These are container-level, not element-level
+            size: None,
+            index_field: None,
+            nominal: validators.nominal,
+        };
+
+        let element_with_validators =
+            self.apply_scalar_validators(element_type, &element_validators, false);
+
+        if container_mods.is_empty() {
+            format!("{},{}", container, element_with_validators)
+        } else {
+            format!(
+                "({}#{}),{}",
+                container,
+                container_mods.join("#"),
+                element_with_validators
+            )
+        }
+    }
+
+    /// Apply validators to container types with module resolution
+    /// The container_type is already resolved with module prefixes
+    fn apply_container_validators_with_module(
+        &self,
+        container_type: &str,
+        validators: &FieldValidators,
+        _current_module: &str,
+        _class_to_module: &std::collections::HashMap<String, String>,
+    ) -> String {
+        // Parse container type: "list,ElementType" or "map,KeyType,ValueType"
+        // Note: ElementType may already have module prefix like "enums.QualityType"
+        let parts: Vec<&str> = container_type.splitn(2, ',').collect();
+        if parts.len() < 2 {
+            return container_type.to_string();
+        }
+
+        let container = parts[0];
+        let element_type = parts[1];
+
+        // Build container validators
+        let mut container_mods = Vec::new();
+
+        if let Some(size) = &validators.size {
+            match size {
+                SizeConstraint::Exact(n) => container_mods.push(format!("size={}", n)),
+                SizeConstraint::Range(min, max) => {
+                    container_mods.push(format!("size=[{},{}]", min, max))
+                }
+            }
+        }
+
+        if let Some(index) = &validators.index_field {
+            container_mods.push(format!("index={}", index));
+        }
+
+        // Build element type with its validators (ref, range, set, required)
+        // Note: element_type is already resolved with module prefix
         let element_validators = FieldValidators {
             ref_target: validators.ref_target.clone(),
             range: validators.range,
@@ -650,6 +861,7 @@ mod tests {
             name: name.to_string(),
             field_type: field_type.to_string(),
             comment: None,
+            alias: None,
             is_optional: optional,
             validators: FieldValidators::default(),
             is_object_factory: false,
@@ -671,6 +883,7 @@ mod tests {
                 name: "name".to_string(),
                 field_type: "string".to_string(),
                 comment: Some("Name field".to_string()),
+                alias: None,
                 is_optional: false,
                 validators: FieldValidators::default(),
                 is_object_factory: false,
@@ -1090,6 +1303,7 @@ mod tests {
                     name: "triggers".to_string(),
                     field_type: "list,BaseTrigger".to_string(),
                     comment: None,
+                    alias: None,
                     is_optional: false,
                     validators: FieldValidators::default(),
                     is_object_factory: true,
@@ -1103,6 +1317,7 @@ mod tests {
                     name: "normalField".to_string(),
                     field_type: "string".to_string(),
                     comment: None,
+                    alias: None,
                     is_optional: false,
                     validators: FieldValidators::default(),
                     is_object_factory: false,
@@ -1146,6 +1361,7 @@ mod tests {
                 name: "mainStat".to_string(),
                 field_type: "ScalingStat".to_string(),
                 comment: None,
+                alias: None,
                 is_optional: false,
                 validators: FieldValidators::default(),
                 is_object_factory: true,
@@ -1189,6 +1405,7 @@ mod tests {
                     name: "$type".to_string(),
                     field_type: "ShapeType".to_string(),
                     comment: None,
+                    alias: None,
                     is_optional: false,
                     validators: FieldValidators::default(),
                     is_object_factory: false,
@@ -1202,6 +1419,7 @@ mod tests {
                     name: "width".to_string(),
                     field_type: "number".to_string(),
                     comment: None,
+                    alias: None,
                     is_optional: false,
                     validators: FieldValidators::default(),
                     is_object_factory: false,
@@ -1305,6 +1523,7 @@ mod tests {
                     name: "id".to_string(),
                     field_type: "string".to_string(),
                     comment: None,
+                    alias: None,
                     is_optional: false,
                     validators: FieldValidators::default(),
                     is_object_factory: false,
@@ -1318,6 +1537,7 @@ mod tests {
                     name: "component".to_string(),
                     field_type: "string".to_string(),
                     comment: None,
+                    alias: None,
                     is_optional: true,
                     validators: FieldValidators::default(),
                     is_object_factory: false,
@@ -1343,5 +1563,245 @@ mod tests {
         // Optional Constructor field should have ? before #constructor
         assert!(xml.contains(r#"type="string?#constructor=ComponentCls""#),
             "Optional Constructor field should generate string?#constructor=ComponentCls");
+    }
+
+    #[test]
+    fn test_field_alias() {
+        let class = ClassInfo {
+            name: "ItemConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "id".to_string(),
+                    field_type: "int".to_string(),
+                    comment: Some("Item ID".to_string()),
+                    alias: Some("物品ID".to_string()),
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "int".to_string(),
+                    relocate_tags: None,
+                },
+                FieldInfo {
+                    name: "name".to_string(),
+                    field_type: "string".to_string(),
+                    comment: None,
+                    alias: Some("名称".to_string()),
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "string".to_string(),
+                    relocate_tags: None,
+                },
+                FieldInfo {
+                    name: "value".to_string(),
+                    field_type: "double".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "number".to_string(),
+                    relocate_tags: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let xml = generate_xml(&[class]);
+        // Field with alias and comment should have both attributes
+        assert!(
+            xml.contains(r#"<var name="id" type="int" alias="物品ID" comment="Item ID"/>"#),
+            "Field with alias and comment should generate both attributes"
+        );
+        // Field with alias only should have alias attribute
+        assert!(
+            xml.contains(r#"<var name="name" type="string" alias="名称"/>"#),
+            "Field with alias only should generate alias attribute"
+        );
+        // Field without alias should not have alias attribute
+        assert!(
+            xml.contains(r#"<var name="value" type="double"/>"#),
+            "Field without alias should not have alias attribute"
+        );
+    }
+
+    #[test]
+    fn test_cross_module_parent_reference() {
+        // ResourceConfig is in module "resource"
+        let resource_config = ClassInfo {
+            name: "ResourceConfig".to_string(),
+            comment: Some("资源基础配置".to_string()),
+            alias: None,
+            fields: vec![make_field("id", "string", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "resource/resource-config.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("resource".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        // WeaponConfig is in module "weapon", extends ResourceConfig
+        let weapon_config = ClassInfo {
+            name: "WeaponConfig".to_string(),
+            comment: Some("武器配置".to_string()),
+            alias: None,
+            fields: vec![make_field("damage", "double", false)],
+            implements: vec![],
+            extends: Some("ResourceConfig".to_string()),
+            source_file: "weapon/weapon-config.ts".to_string(),
+            file_hash: "def456".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("weapon".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        // Generate XML for weapon module (which references resource module)
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let table_registry = TableRegistry::new();
+        let table_mapping_resolver = TableMappingResolver::new(&[]);
+        let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+
+        // Pass all classes so the generator can build the class-to-module mapping
+        let all_classes = vec![resource_config, weapon_config.clone()];
+        let xml = generator.generate_with_all_classes(&[weapon_config], "weapon", &all_classes);
+
+        // Parent should include module prefix: resource.ResourceConfig
+        assert!(
+            xml.contains(r#"parent="resource.ResourceConfig""#),
+            "Parent should include module prefix. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_cross_module_type_reference() {
+        // QualityType is an enum in module "enums"
+        // ResourceConfig is in module "resource", has a field of type QualityType
+        let resource_config = ClassInfo {
+            name: "ResourceConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                make_field("id", "string", false),
+                make_field("quality", "QualityType", true),
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "resource/resource-config.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("resource".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        // QualityType enum (simulated as a class for the mapping)
+        let quality_type = ClassInfo {
+            name: "QualityType".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![],
+            implements: vec![],
+            extends: None,
+            source_file: "enums/quality-type.ts".to_string(),
+            file_hash: "ghi789".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: Some("enums".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let table_registry = TableRegistry::new();
+        let table_mapping_resolver = TableMappingResolver::new(&[]);
+        let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+
+        let all_classes = vec![resource_config.clone(), quality_type];
+        let xml = generator.generate_with_all_classes(&[resource_config], "resource", &all_classes);
+
+        // Type should include module prefix: enums.QualityType
+        assert!(
+            xml.contains(r#"type="enums.QualityType?""#),
+            "Type should include module prefix. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_same_module_no_prefix() {
+        // Both classes are in the same module "weapon"
+        let weapon_level_config = ClassInfo {
+            name: "WeaponLevelConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("level", "double", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "weapon/weapon-level-config.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("weapon".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let weapon_config = ClassInfo {
+            name: "WeaponConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("levels", "list,WeaponLevelConfig", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "weapon/weapon-config.ts".to_string(),
+            file_hash: "def456".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("weapon".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let table_registry = TableRegistry::new();
+        let table_mapping_resolver = TableMappingResolver::new(&[]);
+        let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+
+        let all_classes = vec![weapon_level_config, weapon_config.clone()];
+        let xml = generator.generate_with_all_classes(&[weapon_config], "weapon", &all_classes);
+
+        // Same module, no prefix needed
+        assert!(
+            xml.contains(r#"type="list,WeaponLevelConfig""#),
+            "Same module types should not have prefix. Got:\n{}",
+            xml
+        );
     }
 }

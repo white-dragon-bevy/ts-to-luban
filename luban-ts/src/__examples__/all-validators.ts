@@ -20,8 +20,13 @@ import { LubanTable, Range, Required, Size, Set, Index, Ref } from "../index";
  */
 @LubanTable({ mode: "map", index: "id" })
 export class Item {
+    /** @alias="物品ID" */
     public id: number;
 
+    /**
+     * 物品名称
+     * @alias:名称
+     */
     @Required()
     public name: string;
 

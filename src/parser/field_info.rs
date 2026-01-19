@@ -20,6 +20,8 @@ pub struct FieldInfo {
     pub name: String,
     pub field_type: String,
     pub comment: Option<String>,
+    /// Optional alias from @alias tag in JSDoc
+    pub alias: Option<String>,
     pub is_optional: bool,
     pub validators: FieldValidators,
     /// Whether this field is ObjectFactory<T> type
@@ -42,6 +44,7 @@ impl Default for FieldInfo {
             name: String::new(),
             field_type: String::new(),
             comment: None,
+            alias: None,
             is_optional: false,
             validators: FieldValidators::default(),
             is_object_factory: false,

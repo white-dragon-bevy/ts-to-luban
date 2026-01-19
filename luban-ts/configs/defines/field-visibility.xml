@@ -6,15 +6,15 @@
         <var name="name" type="string"/>
     </bean>
 
+    <bean name="TestPrivateFields" parent="TsClass" comment="Test class with private fields Private fields should be excluded from bean and creator generation">
+        <var name="id" type="double"/>
+        <var name="name" type="string!"/>
+    </bean>
+
     <bean name="TestReadonlyFields" parent="TsClass" comment="Test class with readonly fields Readonly fields should use Writable&lt;T&gt; cast in creator">
         <var name="id" type="double"/>
         <var name="createdAt" type="double"/>
         <var name="updatedAt" type="double"/>
-    </bean>
-
-    <bean name="TestPrivateFields" parent="TsClass" comment="Test class with private fields Private fields should be excluded from bean and creator generation">
-        <var name="id" type="double"/>
-        <var name="name" type="string!"/>
     </bean>
 
 </module>

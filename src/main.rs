@@ -357,7 +357,16 @@ fn run_generation(
 
     // Generate XML - group by (output_path, module_name)
     println!("\n[4/4] Generating XML...");
-    let xml_generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+
+    // Build type-to-module mapping including enums
+    let mut type_to_module: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for enum_info in &final_enums {
+        if let Some(module) = &enum_info.module_name {
+            type_to_module.insert(enum_info.name.clone(), module.clone());
+        }
+    }
+
+    let xml_generator = XmlGenerator::with_type_mapping(&type_mapper, &table_registry, &table_mapping_resolver, type_to_module);
 
     // Group classes by (output_path, module_name)
     let default_output = config.output.path.clone();
@@ -380,7 +389,7 @@ fn run_generation(
     let mut files_written = 0;
     for ((out_path, module_name), classes) in &grouped {
         let classes_owned: Vec<_> = classes.iter().map(|c| (*c).clone()).collect();
-        let xml_output = xml_generator.generate(&classes_owned, module_name);
+        let xml_output = xml_generator.generate_with_all_classes(&classes_owned, module_name, &final_classes_with_table_names);
 
         let resolved_path = project_root.join(out_path);
         let should_write = if resolved_path.exists() {
