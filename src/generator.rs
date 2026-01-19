@@ -46,7 +46,9 @@ impl<'a> XmlGenerator<'a> {
                 seen.insert(name.clone(), class);
             }
         }
-        let unique_classes: Vec<_> = seen.values().collect();
+        let mut unique_classes: Vec<_> = seen.values().collect();
+        // Sort beans by name for consistent output
+        unique_classes.sort_by(|a, b| a.name.cmp(&b.name));
 
         // Generate beans
         for class in &unique_classes {
@@ -55,18 +57,71 @@ impl<'a> XmlGenerator<'a> {
         }
 
         // Generate tables for @LubanTable classes
-        let luban_tables: Vec<_> = classes.iter().filter(|c| c.luban_table.is_some()).collect();
+        // First collect tables with their resolved names for sorting
+        let mut table_entries: Vec<_> = classes
+            .iter()
+            .filter(|c| c.luban_table.is_some())
+            .map(|class| {
+                let (input, output, table_name_override) = self
+                    .table_mapping_resolver
+                    .resolve(&class.name)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Error: No table_mapping for class '{}'. Add [[table_mappings]] in config.",
+                            class.name
+                        )
+                    });
+                let table_name = table_name_override.unwrap_or_else(|| format!("{}Table", class.name));
+                (class, table_name, input, output)
+            })
+            .collect();
+        // Sort by table name for consistent output
+        table_entries.sort_by(|a, b| a.1.cmp(&b.1));
 
-        if !luban_tables.is_empty() {
+        if !table_entries.is_empty() {
             lines.push("    <!-- 数据表配置 -->".to_string());
-            for class in luban_tables {
-                self.generate_table_element(&mut lines, class);
+            for (class, table_name, input, output) in table_entries {
+                self.generate_table_element_with_resolved(&mut lines, class, &table_name, &input, output.as_deref());
             }
             lines.push(String::new());
         }
 
         lines.push("</module>".to_string());
         lines.join("\n")
+    }
+
+    /// Generate table element with pre-resolved table name, input, and output
+    fn generate_table_element_with_resolved(
+        &self,
+        lines: &mut Vec<String>,
+        class: &ClassInfo,
+        table_name: &str,
+        input: &str,
+        output: Option<&str>,
+    ) {
+        let config = class.luban_table.as_ref().unwrap();
+
+        let mut attrs = vec![
+            format!(r#"name="{}""#, table_name),
+            format!(r#"value="{}""#, class.name),
+            format!(r#"mode="{}""#, config.mode),
+            format!(r#"index="{}""#, config.index),
+            format!(r#"input="{}""#, input),
+        ];
+
+        if let Some(out) = output {
+            attrs.push(format!(r#"output="{}""#, out));
+        }
+
+        if let Some(group) = &config.group {
+            attrs.push(format!(r#"group="{}""#, group));
+        }
+
+        if let Some(tags) = &config.tags {
+            attrs.push(format!(r#"tags="{}""#, tags));
+        }
+
+        lines.push(format!(r#"    <table {}/>"#, attrs.join(" ")));
     }
 
     fn generate_table_element(&self, lines: &mut Vec<String>, class: &ClassInfo) {
@@ -1173,6 +1228,70 @@ mod tests {
         assert!(!xml.contains(r#"<var name="$type""#), "XML should not contain $type field");
         // Normal fields should still be present
         assert!(xml.contains(r#"<var name="width" type="double""#), "XML should contain normal fields");
+    }
+
+    #[test]
+    fn test_beans_sorted_by_name() {
+        // Create classes in non-alphabetical order
+        let class_z = ClassInfo {
+            name: "ZClass".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let class_a = ClassInfo {
+            name: "AClass".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        let class_m = ClassInfo {
+            name: "MClass".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+        };
+
+        // Pass classes in Z, A, M order
+        let xml = generate_xml(&[class_z, class_a, class_m]);
+
+        // Find positions of each bean in the output
+        let pos_a = xml.find(r#"<bean name="AClass""#).expect("AClass not found");
+        let pos_m = xml.find(r#"<bean name="MClass""#).expect("MClass not found");
+        let pos_z = xml.find(r#"<bean name="ZClass""#).expect("ZClass not found");
+
+        // Beans should be sorted alphabetically: A < M < Z
+        assert!(pos_a < pos_m, "AClass should come before MClass");
+        assert!(pos_m < pos_z, "MClass should come before ZClass");
     }
 
     #[test]

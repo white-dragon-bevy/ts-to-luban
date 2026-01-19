@@ -57,7 +57,7 @@ impl<'a> TablesSimpleGenerator<'a> {
                 .as_ref()
                 .cloned()
                 .unwrap_or_else(|| format!("{}Table", class.name));
-            let type_def = self.generate_table_type(&class.name, &config.mode, &config.index);
+            let type_def = self.generate_table_type(class, &config.mode, &config.index);
             lines.push(format!("    {}: {};", table_name, type_def));
         }
         lines.push("}".to_string());
@@ -66,12 +66,13 @@ impl<'a> TablesSimpleGenerator<'a> {
     }
 
     /// Generate table type based on mode
-    fn generate_table_type(&self, class_name: &str, mode: &str, _index: &str) -> String {
+    fn generate_table_type(&self, class: &ClassInfo, mode: &str, index: &str) -> String {
+        let class_name = &class.name;
         match mode {
             "map" => {
                 // Determine key type from index field
-                // For now, assume number (could be enhanced to parse actual field type)
-                format!("Map<number, {}>", class_name)
+                let key_type = self.get_index_field_ts_type(class, index);
+                format!("Map<{}, {}>", key_type, class_name)
             }
             "list" => {
                 format!("{}[]", class_name)
@@ -80,9 +81,25 @@ impl<'a> TablesSimpleGenerator<'a> {
                 class_name.to_string()
             }
             _ => {
-                // Default to map
+                // Default to map with number key
                 format!("Map<number, {}>", class_name)
             }
+        }
+    }
+
+    /// Get TypeScript type for the index field
+    fn get_index_field_ts_type(&self, class: &ClassInfo, index: &str) -> &'static str {
+        // Find the index field in the class fields
+        if let Some(field) = class.fields.iter().find(|f| f.name == index) {
+            // Use original_type which is the TypeScript type before mapping
+            match field.original_type.as_str() {
+                "string" => "string",
+                "number" | "int" | "float" | "double" | "long" => "number",
+                _ => "number", // Default to number for unknown types
+            }
+        } else {
+            // Default to number if index field not found
+            "number"
         }
     }
 }
@@ -158,5 +175,99 @@ mod tests {
         let content = gen.generate(&[&class], &output_path);
 
         assert!(content.contains("MyConfigTable: Map<number, MyConfig>"));
+    }
+
+    #[test]
+    fn test_map_key_type_from_index_field() {
+        use crate::parser::FieldInfo;
+
+        let resolver = ImportResolver::new(&TsConfig::default());
+        let gen = TablesSimpleGenerator::new(&resolver);
+
+        let mut config = LubanTableConfig::default();
+        config.mode = "map".to_string();
+        config.index = "id".to_string();
+        config.table_name = None;
+
+        // Create a class with string id field
+        let id_field = FieldInfo {
+            name: "id".to_string(),
+            field_type: "string".to_string(),
+            original_type: "string".to_string(),
+            ..Default::default()
+        };
+
+        let class = ClassInfo {
+            name: "AnimationItem".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![id_field],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "hash".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: Default::default(),
+            luban_table: Some(config),
+        };
+
+        let output_path = PathBuf::from("out/tables.d.ts");
+        let content = gen.generate(&[&class], &output_path);
+
+        // Should use string as key type since id field is string
+        assert!(
+            content.contains("AnimationItemTable: Map<string, AnimationItem>"),
+            "Expected Map<string, AnimationItem>, got: {}",
+            content
+        );
+    }
+
+    #[test]
+    fn test_map_key_type_number_for_numeric_index() {
+        use crate::parser::FieldInfo;
+
+        let resolver = ImportResolver::new(&TsConfig::default());
+        let gen = TablesSimpleGenerator::new(&resolver);
+
+        let mut config = LubanTableConfig::default();
+        config.mode = "map".to_string();
+        config.index = "id".to_string();
+        config.table_name = None;
+
+        // Create a class with number id field
+        let id_field = FieldInfo {
+            name: "id".to_string(),
+            field_type: "double".to_string(),
+            original_type: "number".to_string(),
+            ..Default::default()
+        };
+
+        let class = ClassInfo {
+            name: "ItemConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![id_field],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "hash".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: Default::default(),
+            luban_table: Some(config),
+        };
+
+        let output_path = PathBuf::from("out/tables.d.ts");
+        let content = gen.generate(&[&class], &output_path);
+
+        // Should use number as key type since id field is number
+        assert!(
+            content.contains("ItemConfigTable: Map<number, ItemConfig>"),
+            "Expected Map<number, ItemConfig>, got: {}",
+            content
+        );
     }
 }
