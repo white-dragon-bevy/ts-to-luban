@@ -1,6 +1,6 @@
 {
 	"name": "ts-to-luban",
 	"tree": {
-		"$path": "luban-ts/out"
+		"$path": "src_rojo"
 	}
 }
