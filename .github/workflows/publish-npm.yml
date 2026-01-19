@@ -62,18 +62,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate configs (prepack will handle build)
-        run: |
-          cd luban-ts
-
-          # Generate configs from data using luban CLI
-          npx @rbxts/luban -t all -c lua-bin -d roblox-ts-json --conf configs/luban.conf -x outputCodeDir=src/types/configs -x outputDataDir=configs/jsonConfigs -x compact=1
-
-          # Generate TypeScript tables from XML schemas
-          ../../bin/luban-gen-linux -c luban.config.toml -f
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Publish to GitHub Packages
         run: npm publish
         env:
