@@ -64,12 +64,9 @@ jobs:
 
       - name: Generate luban configs and build TypeScript
         run: |
-          # Install luban-cli globally
-          npm install -g @white-dragon-bevy/luban-cli
-
-          # Generate configs using the downloaded binary
+          # Use the downloaded binary to generate XML schemas and TS tables
           cd luban-ts
-          npx luban -t all -c lua-bin -d roblox-ts-json --conf configs/luban.conf -x outputCodeDir=src/types/configs -x outputDataDir=configs/jsonConfigs -x compact=1
+          ../../bin/luban-gen-linux -c luban.config.toml -f
 
           # Build TypeScript to Lua
           npm run build
