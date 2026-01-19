@@ -1,6 +1,6 @@
 {
   "name": "@white-dragon-bevy/ts-to-luban",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "High-performance TypeScript to Luban XML Schema generator",
   "repository": {
     "type": "git",

@@ -33,6 +33,9 @@ jobs:
             VERSION="${{ github.event.release.tag_name }}"
             VERSION="${VERSION#v}"
           fi
+          # Update root package.json
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # Update luban-ts/package.json
           cd luban-ts
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
