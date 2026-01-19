@@ -62,18 +62,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate luban configs and build TypeScript
+      - name: Generate configs (prepack will handle build)
         run: |
           cd luban-ts
 
-          # Step 1: Generate configs from data using luban CLI
+          # Generate configs from data using luban CLI
           npx @rbxts/luban -t all -c lua-bin -d roblox-ts-json --conf configs/luban.conf -x outputCodeDir=src/types/configs -x outputDataDir=configs/jsonConfigs -x compact=1
 
-          # Step 2: Generate TypeScript tables from XML schemas using downloaded binary
+          # Generate TypeScript tables from XML schemas
           ../../bin/luban-gen-linux -c luban.config.toml -f
-
-          # Step 3: Build TypeScript to Lua
-          npm run build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
