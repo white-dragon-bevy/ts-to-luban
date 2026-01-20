@@ -1,0 +1,114 @@
+# Save-Nezuko 逆向转化测试配置
+
+[project]
+tsconfig = "tsconfig.json"
+
+[output]
+path = "output/generated.xml"
+module_name = ""
+
+# 属性模块
+[[sources]]
+type = "directory"
+path = "sources/attribute"
+output_path = "output/attribute.xml"
+module_name = "attribute"
+scan_options = { include_dts = true }
+
+# 战斗模块
+[[sources]]
+type = "directory"
+path = "sources/battle"
+output_path = "output/battle.xml"
+module_name = "battle"
+
+# 枚举模块
+[[sources]]
+type = "directory"
+path = "sources/enums"
+output_path = "output/enums.xml"
+module_name = "enums"
+
+# 锻造模块
+[[sources]]
+type = "directory"
+path = "sources/forge"
+output_path = "output/forge.xml"
+module_name = "forge"
+
+# 抽卡模块
+[[sources]]
+type = "directory"
+path = "sources/lottery"
+output_path = "output/lottery.xml"
+module_name = "lottery"
+
+# 资源模块
+[[sources]]
+type = "directory"
+path = "sources/resource"
+output_path = "output/resource.xml"
+module_name = "resource"
+scan_options = { include_dts = true }
+
+# 角色模块
+[[sources]]
+type = "directory"
+path = "sources/role"
+output_path = "output/role.xml"
+module_name = "role"
+
+# 抽技能模块
+[[sources]]
+type = "directory"
+path = "sources/rollSkill"
+output_path = "output/roll-skill.xml"
+module_name = "rollSkill"
+
+# 技能模块
+[[sources]]
+type = "directory"
+path = "sources/skill"
+output_path = "output/skill.xml"
+module_name = "skill"
+
+# 特质模块
+[[sources]]
+type = "directory"
+path = "sources/trait"
+output_path = "output/trait.xml"
+module_name = "trait"
+
+# 武器模块
+[[sources]]
+type = "directory"
+path = "sources/weapon"
+output_path = "output/weapon.xml"
+module_name = "weapon"
+
+# Table 配置 - 从代码中的 @table/@input 迁移到这里
+[tables]
+# 战斗模块
+"battle.AllianceAttackInfo" = { input = "../datas/battle/我方普通攻击配置表.xlsx", index = "Id" }
+"battle.AllianceSkillInfo" = { input = "../datas/battle/我方技能配置表.xlsx", index = "Id" }
+
+# 锻造模块
+"forge.ForgeConfig" = { input = "../datas/forge", index = "day" }
+
+# 抽卡模块
+"lottery.LotteryPoolConfig" = "../datas/lottery"
+
+# 角色模块
+"role.RoleConfig" = "../datas/role"
+
+# 抽技能模块
+"rollSkill.RollSkillConfig" = { input = "../datas/roll-skill", mode = "one" }
+
+# 技能模块
+"skill.SkillConfig" = "../datas/skill-hufan"
+
+# 特质模块
+"trait.TraitConfig" = "../datas/trait"
+
+# 武器模块
+"weapon.WeaponConfig" = "../datas/weapon"

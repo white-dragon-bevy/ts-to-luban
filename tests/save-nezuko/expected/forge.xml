@@ -1,0 +1,51 @@
+<module name="forge" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 属性类型 -->
+    <enum name="PieceAttributeType" tags="string" comment="属性类型">
+        <var name="Health" value="health" comment="生命值"/>
+        <var name="Attack" value="attack" comment="攻击力"/>
+        <var name="Speed" value="speed" comment="速度"/>
+        <var name="CdReduction" value="cdReduction" comment="技能冷却缩减"/>
+        <var name="Critical" value="critical" comment="暴击率"/>
+        <var name="AttackSpeed" value="attackSpeed" comment="攻击速度"/>
+        <var name="DamageBonus" value="damageBonus" comment="增伤"/>
+        <var name="Luck" value="luck" comment="幸运"/>
+        <var name="CoinBonus" value="coinBonus" comment="金币加成"/>
+        <var name="HealthPercent" value="healthPercent" comment="百分比生命值"/>
+        <var name="AttackPercent" value="attackPercent" comment="百分比攻击力"/>
+        <var name="Amplify" value="amplify" comment="增幅"/>
+        <var name="Wealth" value="wealth" comment="来财, N(minValue)个回合,每回合获取M(maxValue)个金币"/>
+    </enum>
+
+    <!-- 属性碎片类型 -->
+    <enum name="PieceType" comment="属性碎片类型">
+        <var name="Basic" value="basic" comment="基础"/>
+        <var name="Legendary" value="legendary" comment="传说"/>
+        <var name="Mythical" value="mythical" comment="神话"/>
+    </enum>
+
+    <!-- 单个属性效果 -->
+    <bean name="AttributeEffect" comment="单个属性效果">
+        <var name="attribute" type="PieceAttributeType" comment="属性类型"/>
+        <var name="minValue" type="float" comment="最小值"/>
+        <var name="maxValue" type="float" comment="最大值"/>
+        <var name="luckInfluence" type="float?" comment="幸运影响系数"/>
+        <var name="stdDevRatio" type="float?" comment="标准差比例(相对于范围)"/>
+    </bean>
+
+    <!-- 属性碎片, 从effects中获取固定属性, randomEffects中获取随机属性, specialEffect用于特殊效果, 只能选取一个, 优先级依次降低 -->
+    <bean name="AttributePiece" comment="属性碎片, 从effects中获取固定属性, randomEffects中获取随机属性, specialEffect用于特殊效果, 只能选取一个, 优先级依次降低">
+        <var name="id" type="int" comment="属性碎片ID"/>
+        <var name="pieceType" type="PieceType" comment="碎片类型(基础/传说/神话/增幅)"/>
+        <var name="effects" type="list,AttributeEffect" comment="固定属性效果列表, 最高优先级,"/>
+        <var name="randomEffects" type="list,AttributeEffect" comment="随机属性配置"/>
+        <var name="weight" type="float" comment="权重"/>
+    </bean>
+
+    <!-- 锻造配置 -->
+    <bean name="ForgeConfig" comment="锻造配置">
+        <var name="day" type="int" comment="锻造天数"/>
+        <var name="attributePieces" type="list,AttributePiece" comment="属性碎片列表"/>
+    </bean>
+
+</module>

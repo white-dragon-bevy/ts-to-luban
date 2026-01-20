@@ -1,0 +1,49 @@
+<module name="enums" comment="自动生成的 ts enum 定义">
+
+    <!-- 属性类型 -->
+    <enum name="AttributeType" comment="属性类型">
+        <var name="Health" alias="health" value="1" comment="生命值"/>
+        <var name="Attack" alias="attack" value="2" comment="攻击力"/>
+        <var name="Speed" alias="speed" value="3" comment="速度"/>
+        <var name="CdReduction" alias="cdReduction" value="4" comment="技能冷却缩减"/>
+        <var name="Critical" alias="critical" value="5" comment="暴击率"/>
+        <var name="AttackSpeed" alias="attackSpeed" value="6" comment="攻击速度"/>
+        <var name="DamageBonus" alias="damageBonus" value="7" comment="增伤"/>
+        <var name="Luck" alias="luck" value="8" comment="幸运"/>
+        <var name="CoinBonus" alias="coinBonus" value="9" comment="金币加成"/>
+    </enum>
+
+    <!-- 货币类型 -->
+    <enum name="CurrencyType" comment="货币类型">
+        <var name="Coin" alias="coin" value="1" comment="金币"/>
+        <var name="Stone" alias="stone" value="2" comment="矿石"/>
+        <var name="Soul" alias="soul" value="3" comment="灵魂"/>
+    </enum>
+
+    <!-- 物品类型 -->
+    <enum name="ItemType" comment="物品类型">
+        <var name="Role" alias="role" value="1" comment="角色"/>
+        <var name="Consumable" alias="consumable" value="2" comment="消耗品"/>
+        <var name="Currency" alias="currency" value="3" comment="货币"/>
+    </enum>
+
+    <!-- 品质类型 -->
+    <enum name="QualityType" comment="品质类型">
+        <var name="Common" value="common" comment="普通"/>
+        <var name="Uncommon" value="uncommon" comment="优秀"/>
+        <var name="Rare" value="rare" comment="稀有"/>
+        <var name="Epic" value="epic" comment="史诗"/>
+        <var name="Legendary" value="legendary" comment="传说"/>
+        <var name="Mythic" value="mythic" comment="神话"/>
+    </enum>
+
+    <!-- 技能类型 -->
+    <enum name="SkillStyle" comment="技能类型">
+        <var name="Attack" alias="attack" value="1" comment="攻击技能"/>
+        <var name="Defense" alias="defense" value="2" comment="防御技能"/>
+        <var name="Support" alias="support" value="3" comment="辅助技能"/>
+        <var name="Control" alias="control" value="4" comment="控制技能"/>
+        <var name="Heal" alias="heal" value="5" comment="治疗技能"/>
+    </enum>
+
+</module>

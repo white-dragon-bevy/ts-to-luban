@@ -73,6 +73,32 @@ path = "src/__examples__/dollar-type.ts"
 output_path = "configs/defines/dollar-type.xml"
 module_name = "dollar_type"
 
+# Table 配置 - 替代 @LubanTable 装饰器
+[tables]
+# all-validators.ts
+"examples.Item" = "../datas/item"
+"examples.Skill" = "../datas/skill"
+"examples.Monster" = "../datas/monster"
+"examples.Player" = "../datas/player"
+"examples.Difficulty" = "../datas/difficulty"
+"examples.Team" = "../datas/team"
+
+# items.ts
+"items.Weapon" = "../datas/equipment/weapon"
+"items.Armor" = "../datas/equipment/armor"
+
+# table-modes.ts
+"modes.LeaderboardEntry" = { input = "../datas/leaderboard", mode = "list", index = "rank" }
+"modes.GameConfig" = { input = "../datas/game-config", mode = "one" }
+"modes.ServerSettings" = { input = "../datas/server-settings", mode = "singleton" }
+
+# virtual-fields.ts
+"virtual_fields.WeaponConfig" = "../datas/weapon-config"
+"virtual_fields.ArmorConfig" = "../datas/armor-config"
+
+# constructor-type.ts
+"constructor.CharacterConfig" = "../datas/character-config"
+
 # 虚拟字段配置：WeaponConfig
 [[virtual_fields]]
 class = "WeaponConfig"
@@ -93,17 +119,3 @@ class = "ArmorConfig"
 fields = [
     { name = "defenseStat", type = "ScalingStat", comment = "防御属性", relocate_to = { target = "TScalingStat", prefix = "_defense" } }
 ]
-
-# table_mappings - 按模块匹配
-[[table_mappings]]
-pattern = "Weapon|Armor"
-input = "*@../datas/equipment/{name}/"
-
-[[table_mappings]]
-pattern = "GameConfig|ServerSettings"
-input = "../datas/{name}/"
-
-
-[[table_mappings]]
-pattern = ".*"
-input = "*@../datas/{name}/"

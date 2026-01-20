@@ -17,7 +17,7 @@ mod type_mapper;
 
 use cache::Cache;
 use config::{Config, SourceConfig};
-use generator::{generate_bean_type_enums_xml, generate_enum_xml, XmlGenerator};
+use generator::{generate_bean_type_enums_xml, XmlGenerator};
 use parser::TsParser;
 use ts_generator::TsCodeGenerator;
 use tsconfig::TsConfig;
@@ -27,7 +27,7 @@ mod table_registry;
 use table_registry::TableRegistry;
 
 mod table_mapping;
-use table_mapping::TableMappingResolver;
+// TableMappingResolver is deprecated - tables are now configured in [tables] section
 
 #[derive(Parser)]
 #[command(name = "luban-gen")]
@@ -262,26 +262,12 @@ fn run_generation(
         all_classes
     };
 
-    // First pass: collect @LubanTable classes into registry for ref resolution
-    // Use per-source module_name if set, otherwise use default config.output.module_name
-    let default_module_name = &config.output.module_name;
-    let mut table_registry = TableRegistry::new();
-    for class in &all_classes {
-        if class.luban_table.is_some() {
-            let namespace = class
-                .module_name
-                .as_deref()
-                .unwrap_or(default_module_name.as_str());
-            table_registry.register(&class.name, namespace);
-        }
-    }
+    // Build table registry from [tables] config
+    let table_registry = TableRegistry::from_config(&config.tables);
     if cli.verbose {
         println!(
-            "  Registered {} tables in registry",
-            all_classes
-                .iter()
-                .filter(|c| c.luban_table.is_some())
-                .count()
+            "  Registered {} tables from [tables] config",
+            config.tables.len()
         );
     }
 
@@ -333,27 +319,8 @@ fn run_generation(
 
     println!("  Cached: {}, Updated: {}", unchanged, updated);
 
-    // Update table_name from table_mappings before generating XML and TypeScript
-    let table_mapping_resolver = TableMappingResolver::new(&config.table_mappings);
-    let mut final_classes_with_table_names: Vec<_> = final_classes
-        .into_iter()
-        .map(|mut class| {
-            if let Some(ref mut luban_table) = class.luban_table {
-                if cli.verbose {
-                    println!("  [checking] class: {}", class.name);
-                }
-                if let Some((_, _, table_name)) = table_mapping_resolver.resolve(&class.name) {
-                    if cli.verbose {
-                        println!("  [table_name] {} -> {:?}", class.name, table_name);
-                    }
-                    luban_table.table_name = table_name;
-                } else if cli.verbose {
-                    println!("  [no mapping] {}", class.name);
-                }
-            }
-            class
-        })
-        .collect();
+    // No longer need table_mapping_resolver - tables are configured in [tables] section
+    let final_classes_with_table_names: Vec<_> = final_classes;
 
     // Generate XML - group by (output_path, module_name)
     println!("\n[4/4] Generating XML...");
@@ -366,7 +333,34 @@ fn run_generation(
         }
     }
 
-    let xml_generator = XmlGenerator::with_type_mapping(&type_mapper, &table_registry, &table_mapping_resolver, type_to_module);
+    // Build file-to-module mapping for cross-module type resolution
+    // This maps source file paths to their module names
+    let mut file_to_module: std::collections::HashMap<std::path::PathBuf, String> = std::collections::HashMap::new();
+    for class in &final_classes_with_table_names {
+        if let Some(module) = &class.module_name {
+            // Canonicalize the source file path for consistent matching
+            let source_path = std::path::PathBuf::from(&class.source_file);
+            if let Ok(canonical) = source_path.canonicalize() {
+                file_to_module.insert(canonical, module.clone());
+            } else {
+                // If canonicalize fails, use the original path
+                file_to_module.insert(source_path, module.clone());
+            }
+        }
+    }
+    // Also add enums to file_to_module
+    for enum_info in &final_enums {
+        if let Some(module) = &enum_info.module_name {
+            let source_path = std::path::PathBuf::from(&enum_info.source_file);
+            if let Ok(canonical) = source_path.canonicalize() {
+                file_to_module.insert(canonical, module.clone());
+            } else {
+                file_to_module.insert(source_path, module.clone());
+            }
+        }
+    }
+
+    let xml_generator = XmlGenerator::with_type_and_file_mapping(&type_mapper, &table_registry, type_to_module, file_to_module);
 
     // Group classes by (output_path, module_name)
     let default_output = config.output.path.clone();
@@ -385,11 +379,52 @@ fn run_generation(
         grouped.entry((out_path, module)).or_default().push(class);
     }
 
-    // Generate and write each group
+    // Group enums by (output_path, module_name) - same grouping as classes
+    let mut enum_grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> =
+        std::collections::HashMap::new();
+    for enum_info in final_enums.iter() {
+        let out_path = enum_info
+            .output_path
+            .clone()
+            .unwrap_or_else(|| default_output.clone());
+        let module = enum_info
+            .module_name
+            .clone()
+            .unwrap_or_else(|| default_module.clone());
+        enum_grouped
+            .entry((out_path, module))
+            .or_default()
+            .push(enum_info);
+    }
+
+    // Collect all unique (output_path, module_name) keys from both classes and enums
+    let mut all_keys: std::collections::HashSet<(PathBuf, String)> = std::collections::HashSet::new();
+    for key in grouped.keys() {
+        all_keys.insert(key.clone());
+    }
+    for key in enum_grouped.keys() {
+        all_keys.insert(key.clone());
+    }
+
+    // Generate and write each group (classes + enums merged into same file)
     let mut files_written = 0;
-    for ((out_path, module_name), classes) in &grouped {
-        let classes_owned: Vec<_> = classes.iter().map(|c| (*c).clone()).collect();
-        let xml_output = xml_generator.generate_with_all_classes(&classes_owned, module_name, &final_classes_with_table_names);
+    for (out_path, module_name) in &all_keys {
+        let classes = grouped.get(&(out_path.clone(), module_name.clone()));
+        let enums = enum_grouped.get(&(out_path.clone(), module_name.clone()));
+
+        let classes_owned: Vec<_> = classes
+            .map(|c| c.iter().map(|c| (*c).clone()).collect())
+            .unwrap_or_default();
+        let enums_owned: Vec<_> = enums
+            .map(|e| e.iter().map(|e| (*e).clone()).collect())
+            .unwrap_or_default();
+
+        let xml_output = xml_generator.generate_with_all_classes_and_enums(
+            &classes_owned,
+            &enums_owned,
+            module_name,
+            &final_classes_with_table_names,
+        );
 
         let resolved_path = project_root.join(out_path);
         let should_write = if resolved_path.exists() {
@@ -404,7 +439,12 @@ fn run_generation(
                 std::fs::create_dir_all(parent)?;
             }
             std::fs::write(&resolved_path, &xml_output)?;
-            println!("  Written {} beans to {:?}", classes.len(), resolved_path);
+            println!(
+                "  Written {} beans, {} enums to {:?}",
+                classes_owned.len(),
+                enums_owned.len(),
+                resolved_path
+            );
             files_written += 1;
         } else {
             println!("  No changes for {:?}", resolved_path);
@@ -413,69 +453,6 @@ fn run_generation(
 
     if files_written == 0 {
         println!("  No changes, skipping all writes");
-    }
-
-    // Generate enum XML if there are enums
-    if !final_enums.is_empty() {
-        // Group enums by (output_path, module_name)
-        let mut enum_grouped: std::collections::HashMap<(PathBuf, String), Vec<_>> =
-            std::collections::HashMap::new();
-
-        // Default enum output path: use config.output.enum_path or derive from default_output
-        let default_enum_output = config.output.enum_path.clone().unwrap_or_else(|| {
-            default_output.with_file_name(format!(
-                "{}_enums.xml",
-                default_output
-                    .file_stem()
-                    .map(|s| s.to_string_lossy())
-                    .unwrap_or_default()
-            ))
-        });
-
-        for enum_info in final_enums.iter() {
-            let out_path = enum_info
-                .output_path
-                .clone()
-                .map(|p| {
-                    // For per-source output_path, add _enums suffix
-                    p.with_file_name(format!(
-                        "{}_enums.xml",
-                        p.file_stem()
-                            .map(|s| s.to_string_lossy())
-                            .unwrap_or_default()
-                    ))
-                })
-                .unwrap_or_else(|| default_enum_output.clone());
-            let module = enum_info
-                .module_name
-                .clone()
-                .unwrap_or_else(|| default_module.clone());
-            enum_grouped
-                .entry((out_path, module))
-                .or_default()
-                .push(enum_info);
-        }
-
-        for ((out_path, module_name), enums) in &enum_grouped {
-            let enums_owned: Vec<_> = enums.iter().map(|e| (*e).clone()).collect();
-            let xml_output = generate_enum_xml(&enums_owned, module_name);
-
-            let resolved_path = project_root.join(out_path);
-            let should_write = if resolved_path.exists() {
-                let existing = std::fs::read_to_string(&resolved_path)?;
-                existing != xml_output
-            } else {
-                true
-            };
-
-            if should_write {
-                if let Some(parent) = resolved_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&resolved_path, &xml_output)?;
-                println!("  Written {} enums to {:?}", enums.len(), resolved_path);
-            }
-        }
     }
 
     // Generate bean type enums XML if configured (grouped by parent)
@@ -546,6 +523,7 @@ fn run_generation(
             final_classes_with_table_names.clone(),
             tsconfig,
             config.output.module_name.clone(),
+            &table_registry,
         );
 
         ts_generator.generate()?;

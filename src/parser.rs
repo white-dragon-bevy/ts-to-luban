@@ -4,7 +4,7 @@ pub mod enum_info;
 pub mod field_info;
 pub mod virtual_fields;
 
-pub use class_info::{ClassInfo, LubanTableConfig};
+pub use class_info::{ClassInfo, ImportMap, JsDocTableConfig, LubanTableConfig};
 pub use decorator::{parse_decorator, DecoratorArg};
 pub use enum_info::{EnumInfo, EnumVariant};
 pub use field_info::{FieldInfo, FieldValidators, SizeConstraint};
@@ -12,7 +12,7 @@ pub use virtual_fields::inject_virtual_fields;
 
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use swc_common::{
     comments::{Comments, SingleThreadedComments},
     sync::Lrc,
@@ -66,6 +66,9 @@ impl TsParser {
             .parse_module()
             .map_err(|e| anyhow::anyhow!("Parse error: {:?}", e))?;
 
+        // First pass: collect import statements and resolve paths
+        let imports = self.extract_imports(&module, path);
+
         let mut classes = Vec::new();
 
         for item in &module.body {
@@ -73,16 +76,18 @@ impl TsParser {
                 ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export)) => {
                     let export_pos = export.span.lo;
                     if let Decl::Class(class_decl) = &export.decl {
-                        if let Some(class_info) =
+                        if let Some(mut class_info) =
                             self.extract_class(class_decl, path, &file_hash, &comments, export_pos)
                         {
+                            class_info.imports = imports.clone();
                             classes.push(class_info);
                         }
                     }
                     if let Decl::TsInterface(iface_decl) = &export.decl {
-                        if let Some(iface_info) = self
+                        if let Some(mut iface_info) = self
                             .extract_interface(iface_decl, path, &file_hash, &comments, export_pos)
                         {
+                            iface_info.imports = imports.clone();
                             classes.push(iface_info);
                         }
                     }
@@ -172,10 +177,15 @@ impl TsParser {
             .as_ref()
             .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
-        // Get cleaned comment (without @flags and @alias lines)
+        // Parse @tags tag from enum comment (e.g., @tags="string")
+        let enum_tags = raw_enum_comment
+            .as_ref()
+            .and_then(|c| parse_jsdoc_tag(c, "tags"));
+
+        // Get cleaned comment (without @flags, @alias, and @tags lines)
         let enum_comment = raw_enum_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["flags", "alias"]));
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["flags", "alias", "tags"]));
 
         let mut variants = Vec::new();
         let mut is_string_enum = false;
@@ -258,6 +268,7 @@ impl TsParser {
             comment: enum_comment,
             is_string_enum,
             is_flags,
+            tags: enum_tags,
             variants,
             source_file: path.to_string_lossy().to_string(),
             file_hash: file_hash.to_string(),
@@ -293,6 +304,85 @@ impl TsParser {
             Expr::Paren(paren) => Self::eval_const_expr(&paren.expr, member_values),
             _ => None,
         }
+    }
+
+    /// Extract import statements from a module and resolve relative paths
+    /// Returns a map of type_name -> resolved source file path
+    fn extract_imports(&self, module: &Module, current_file: &Path) -> ImportMap {
+        let mut imports = ImportMap::new();
+        let current_dir = current_file.parent().unwrap_or(Path::new("."));
+
+        for item in &module.body {
+            if let ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) = item {
+                // Get the source path (e.g., "./skill-config" or "../resource/resource-config")
+                // src.value is Atom type, use format! to convert
+                let source = format!("{:?}", import_decl.src.value).trim_matches('"').to_string();
+
+                // Only process relative imports (starting with . or ..)
+                if !source.starts_with('.') {
+                    continue;
+                }
+
+                // Resolve the relative path to an absolute path
+                let resolved_path = self.resolve_import_path(current_dir, &source);
+
+                // Extract imported type names
+                for specifier in &import_decl.specifiers {
+                    match specifier {
+                        ImportSpecifier::Named(named) => {
+                            // import { Foo } from "./bar" or import { Foo as Bar } from "./bar"
+                            let local_name = named.local.sym.to_string();
+                            if let Some(ref resolved) = resolved_path {
+                                imports.insert(local_name, resolved.clone());
+                            }
+                        }
+                        ImportSpecifier::Default(default) => {
+                            // import Foo from "./bar"
+                            let local_name = default.local.sym.to_string();
+                            if let Some(ref resolved) = resolved_path {
+                                imports.insert(local_name, resolved.clone());
+                            }
+                        }
+                        ImportSpecifier::Namespace(_) => {
+                            // import * as Foo from "./bar" - skip namespace imports
+                        }
+                    }
+                }
+            }
+        }
+
+        imports
+    }
+
+    /// Resolve an import path relative to the current directory
+    /// Handles .ts, .tsx, .d.ts extensions and index files
+    fn resolve_import_path(&self, current_dir: &Path, import_source: &str) -> Option<PathBuf> {
+        let base_path = current_dir.join(import_source);
+
+        // Try different extensions
+        let extensions = [".ts", ".tsx", ".d.ts", "/index.ts", "/index.tsx", "/index.d.ts"];
+
+        for ext in &extensions {
+            let full_path = if import_source.ends_with(ext) {
+                base_path.clone()
+            } else {
+                PathBuf::from(format!("{}{}", base_path.display(), ext))
+            };
+
+            if full_path.exists() {
+                // Canonicalize to get absolute path
+                return full_path.canonicalize().ok();
+            }
+        }
+
+        // If no file found, return the base path with .ts extension (for cross-reference)
+        // This allows matching even if the file doesn't exist yet
+        let default_path = PathBuf::from(format!("{}.ts", base_path.display()));
+        default_path.canonicalize().ok().or_else(|| {
+            // If canonicalize fails, try to normalize the path manually
+            let normalized = current_dir.join(import_source);
+            Some(normalized.with_extension("ts"))
+        })
     }
 
     /// Get raw JSDoc comment text (without parsing)
@@ -439,10 +529,26 @@ impl TsParser {
             .as_ref()
             .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
-        // Extract class comment (excluding @alias line)
+        // Parse @table JSDoc tag (e.g., @table="map,id")
+        let table_config = raw_class_comment.as_ref().and_then(|c| {
+            parse_jsdoc_tag(c, "table").map(|v| {
+                let parts: Vec<&str> = v.split(',').collect();
+                class_info::JsDocTableConfig {
+                    mode: parts.first().unwrap_or(&"map").to_string(),
+                    index: parts.get(1).map(|s| s.to_string()),
+                }
+            })
+        });
+
+        // Parse @input JSDoc tag (e.g., @input="../datas/skill")
+        let input_path = raw_class_comment
+            .as_ref()
+            .and_then(|c| parse_jsdoc_tag(c, "input"));
+
+        // Extract class comment (excluding @alias, @table, @input lines)
         let class_comment = raw_class_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "table", "input"]))
             .filter(|s| !s.is_empty())
             .or_else(|| self.get_leading_comment(export_pos, comments));
         let mut param_comments = self.get_param_comments(export_pos, comments);
@@ -563,6 +669,9 @@ impl TsParser {
             module_name: None,
             type_params,
             luban_table,
+            table_config,
+            input_path,
+            imports: ImportMap::new(), // Will be filled in by parse_file
         })
     }
 
@@ -597,10 +706,26 @@ impl TsParser {
             .as_ref()
             .and_then(|c| parse_jsdoc_tag(c, "alias"));
 
-        // Extract interface comment (excluding @alias line)
+        // Parse @table JSDoc tag (e.g., @table="map,id")
+        let table_config = raw_iface_comment.as_ref().and_then(|c| {
+            parse_jsdoc_tag(c, "table").map(|v| {
+                let parts: Vec<&str> = v.split(',').collect();
+                class_info::JsDocTableConfig {
+                    mode: parts.first().unwrap_or(&"map").to_string(),
+                    index: parts.get(1).map(|s| s.to_string()),
+                }
+            })
+        });
+
+        // Parse @input JSDoc tag (e.g., @input="../datas/skill")
+        let input_path = raw_iface_comment
+            .as_ref()
+            .and_then(|c| parse_jsdoc_tag(c, "input"));
+
+        // Extract interface comment (excluding @alias, @table, @input lines)
         let iface_comment = raw_iface_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "table", "input"]))
             .filter(|s| !s.is_empty())
             .or_else(|| self.get_leading_comment(export_pos, comments));
         let param_comments = self.get_param_comments(export_pos, comments);
@@ -644,6 +769,9 @@ impl TsParser {
             module_name: None,
             type_params,
             luban_table: None,
+            table_config,
+            input_path,
+            imports: ImportMap::new(), // Will be filled in by parse_file
         })
     }
 
@@ -716,6 +844,10 @@ impl TsParser {
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
             relocate_tags: None,
+            default_value: None,
+            type_override: None,
+            separator: None,
+            map_separator: None,
         })
     }
 
@@ -775,10 +907,16 @@ impl TsParser {
         // Parse @alias tag from field comment
         let field_alias = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "alias"));
 
-        // Get cleaned comment (without @alias line)
+        // Parse new JSDoc tags for field modifiers
+        let default_value = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "default"));
+        let type_override = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "type"));
+        let separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "sep"));
+        let map_separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "mapsep"));
+
+        // Get cleaned comment (without @alias and other JSDoc modifier lines)
         let comment = raw_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep"]))
             .filter(|c| !c.is_empty());
 
         // Parse field decorators from ClassProp
@@ -797,6 +935,10 @@ impl TsParser {
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
             relocate_tags: None,
+            default_value,
+            type_override,
+            separator,
+            map_separator,
         })
     }
 
@@ -839,10 +981,16 @@ impl TsParser {
         // Parse @alias tag from field comment
         let field_alias = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "alias"));
 
-        // Get cleaned comment (without @alias line)
+        // Parse new JSDoc tags for field modifiers
+        let default_value = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "default"));
+        let type_override = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "type"));
+        let separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "sep"));
+        let map_separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "mapsep"));
+
+        // Get cleaned comment (without @alias and other JSDoc modifier lines)
         let comment = raw_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep"]))
             .filter(|c| !c.is_empty());
 
         Some(FieldInfo {
@@ -858,6 +1006,10 @@ impl TsParser {
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
             relocate_tags: None,
+            default_value,
+            type_override,
+            separator,
+            map_separator,
         })
     }
 

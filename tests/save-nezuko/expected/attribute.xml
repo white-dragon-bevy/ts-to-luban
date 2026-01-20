@@ -1,0 +1,16 @@
+<module name="attribute" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 基础属性 -->
+    <bean name="BaseAttributes" comment="基础属性">
+        <var name="health" type="float#default=0" comment="生命值"/>
+        <var name="attack" type="float#default=0" comment="攻击力"/>
+        <var name="speed" type="float#default=0" comment="速度"/>
+        <var name="cdReduction" type="float#default=0" comment="技能冷却缩减"/>
+        <var name="critical" type="float#default=0" comment="暴击率"/>
+        <var name="attackSpeed" type="float#default=0" comment="攻击速度"/>
+        <var name="damageBonus" type="float#default=0" comment="增伤"/>
+        <var name="luck" type="float#default=0" comment="幸运"/>
+        <var name="coinBonus" type="float#default=0" comment="金币加成"/>
+    </bean>
+
+</module>

@@ -1,0 +1,12 @@
+<module name="resource" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 资源基础配置 -->
+    <bean name="ResourceConfig" comment="资源基础配置">
+        <var name="id" type="string" comment="资源ID"/>
+        <var name="name" type="string" comment="资源名称"/>
+        <var name="icon" type="string?" comment="资源图标"/>
+        <var name="description" type="string?" comment="资源描述"/>
+        <var name="quality" type="enums.QualityType?" comment="资源品质"/>
+    </bean>
+
+</module>

@@ -1,0 +1,13 @@
+<module name="skill" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 技能配置 -->
+    <bean name="SkillConfig" parent="resource.ResourceConfig" comment="技能配置">
+        <var name="maxLevel" type="int#default=5" comment="技能最大等级"/>
+        <var name="baseWeight" type="float#default=1" comment="基础权重 (用于随机选择时的权重计算)"/>
+        <var name="tags" type="(list#sep=|),string" comment="技能标签列表"/>
+        <var name="styles" type="(list#sep=|),enums.SkillStyle" comment="技能类型列表"/>
+    </bean>
+
+    <table name="SkillConfigTable" value="SkillConfig" input="../datas/skill-hufan" />
+
+</module>

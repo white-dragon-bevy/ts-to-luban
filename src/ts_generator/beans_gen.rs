@@ -13,7 +13,7 @@ impl<'a> BeansGenerator<'a> {
         Self { import_resolver }
     }
 
-    /// Generate beans.ts with all classes (not interfaces)
+    /// Generate beans.ts with all classes and interfaces
     pub fn generate(
         &self,
         all_classes: &[&ClassInfo],
@@ -22,7 +22,7 @@ impl<'a> BeansGenerator<'a> {
     ) -> String {
         let mut lines = Vec::new();
 
-        // Filter to only classes (not interfaces) and deduplicate by name
+        // Only include classes (not interfaces), deduplicate by name
         let mut seen = std::collections::HashSet::new();
         let classes: Vec<_> = all_classes
             .iter()
@@ -97,5 +97,75 @@ impl<'a> BeansGenerator<'a> {
         } else {
             format!("{}.{}", module, class.name)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::ClassInfo;
+
+    fn make_class(name: &str, is_interface: bool) -> ClassInfo {
+        ClassInfo {
+            name: name.to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "".to_string(),
+            is_interface,
+            output_path: None,
+            module_name: Some("test".to_string()),
+            type_params: HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_beans_generator_excludes_interfaces() {
+        let import_resolver = ImportResolver::default();
+        let generator = BeansGenerator::new(&import_resolver);
+
+        let class1 = make_class("MyClass", false);
+        let interface1 = make_class("MyInterface", true);
+        let class2 = make_class("AnotherClass", false);
+
+        let all_classes: Vec<&ClassInfo> = vec![&class1, &interface1, &class2];
+        let output = generator.generate(&all_classes, Path::new("out/beans.ts"), "test");
+
+        // Should include classes
+        assert!(output.contains("MyClass"), "Should include MyClass");
+        assert!(output.contains("AnotherClass"), "Should include AnotherClass");
+
+        // Should NOT include interfaces
+        assert!(
+            !output.contains("MyInterface"),
+            "Should NOT include MyInterface"
+        );
+    }
+
+    #[test]
+    fn test_beans_generator_only_interfaces_produces_empty_beans() {
+        let import_resolver = ImportResolver::default();
+        let generator = BeansGenerator::new(&import_resolver);
+
+        let interface1 = make_class("Interface1", true);
+        let interface2 = make_class("Interface2", true);
+
+        let all_classes: Vec<&ClassInfo> = vec![&interface1, &interface2];
+        let output = generator.generate(&all_classes, Path::new("out/beans.ts"), "test");
+
+        // Should have empty Beans object
+        assert!(output.contains("export const Beans = {"));
+        assert!(output.contains("} as const;"));
+        // Should not have any imports or entries
+        assert!(!output.contains("import"));
+        assert!(!output.contains("Interface1"));
+        assert!(!output.contains("Interface2"));
     }
 }

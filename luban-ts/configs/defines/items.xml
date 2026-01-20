@@ -1,17 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
 <module name="items" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="Armor" alias="防具" parent="TsClass" comment="防具配置">
-        <var name="id" type="double"/>
-        <var name="name" type="string!"/>
-        <var name="defense" type="double#range=[1,500]"/>
-    </bean>
-
-    <bean name="EquipmentSet" parent="TsClass" comment="装备套装">
-        <var name="weaponId" type="double#ref=items.WeaponTable"/>
-        <var name="armorId" type="double#ref=items.ArmorTable"/>
-    </bean>
-
+    <!-- 武器配置 -->
     <bean name="Weapon" alias="武器" parent="TsClass" comment="武器配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
@@ -19,8 +8,20 @@
         <var name="attackSpeed" type="double#range=[0.5,2]"/>
     </bean>
 
-    <!-- 数据表配置 -->
-    <table name="ArmorTable" value="Armor" mode="map" index="id" input="*@../datas/equipment/armor/"/>
-    <table name="WeaponTable" value="Weapon" mode="map" index="id" input="*@../datas/equipment/weapon/"/>
+    <!-- 防具配置 -->
+    <bean name="Armor" alias="防具" parent="TsClass" comment="防具配置">
+        <var name="id" type="double"/>
+        <var name="name" type="string!"/>
+        <var name="defense" type="double#range=[1,500]"/>
+    </bean>
+
+    <!-- 装备套装 -->
+    <bean name="EquipmentSet" parent="TsClass" comment="装备套装">
+        <var name="weaponId" type="double#ref=items.WeaponTable"/>
+        <var name="armorId" type="double#ref=items.ArmorTable"/>
+    </bean>
+
+    <table name="WeaponTable" value="Weapon" index="id" input="../datas/equipment/weapon" />
+    <table name="ArmorTable" value="Armor" index="id" input="../datas/equipment/armor" />
 
 </module>

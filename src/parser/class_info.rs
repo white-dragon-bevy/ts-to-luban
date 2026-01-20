@@ -2,6 +2,9 @@ use super::field_info::FieldInfo;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Import information: maps imported type name to the resolved source file path
+pub type ImportMap = HashMap<String, PathBuf>;
+
 /// Configuration for Luban table generation from @luban-table decorator
 #[derive(Debug, Clone, Default)]
 pub struct LubanTableConfig {
@@ -11,6 +14,13 @@ pub struct LubanTableConfig {
     pub tags: Option<String>,
     /// Custom table name from table_mappings config (overrides default {ClassName}Table)
     pub table_name: Option<String>,
+}
+
+/// Configuration for Luban table from @table JSDoc tag
+#[derive(Debug, Clone)]
+pub struct JsDocTableConfig {
+    pub mode: String,
+    pub index: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,4 +46,11 @@ pub struct ClassInfo {
     pub type_params: HashMap<String, String>,
     /// Luban table configuration from @luban-table decorator
     pub luban_table: Option<LubanTableConfig>,
+    /// Table configuration from @table JSDoc tag (e.g., @table="map,id")
+    pub table_config: Option<JsDocTableConfig>,
+    /// Input path from @input JSDoc tag (e.g., @input="../datas/skill")
+    pub input_path: Option<String>,
+    /// Import mappings: type_name -> resolved source file path
+    /// Used for cross-module type resolution when same-named types exist in different modules
+    pub imports: ImportMap,
 }

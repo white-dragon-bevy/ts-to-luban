@@ -1,0 +1,50 @@
+<module name="battle" comment="自动生成的 ts class Bean 定义">
+
+    <bean name="AllianceAttackInfo">
+        <var name="Id" type="string" comment="角色编号"/>
+        <var name="Attacks" type="(list#sep=;),AttackInfo" comment="角色普通攻击列表"/>
+    </bean>
+
+    <bean name="AllianceSkillDetail">
+        <var name="Duration" type="float" comment="持续时间"/>
+        <var name="MinDuration" type="float?" comment="最小持续时间"/>
+        <var name="Multiple" type="float?" comment="伤害倍率"/>
+        <var name="ShakeInfo" type="string?" comment="震屏配置"/>
+        <var name="Points" type="(list#sep=;),AllianceSkillPointInfo" comment="技能时间点列表"/>
+    </bean>
+
+    <bean name="AllianceSkillInfo">
+        <var name="Id" type="string" comment="技能Id"/>
+        <var name="UnlockLevel" type="int" comment="解锁等级"/>
+        <var name="IconAsset" type="string" comment="图标资产"/>
+        <var name="EnergyCost" type="int" comment="能量消耗"/>
+        <var name="Points" type="AllianceSkillDetail" comment="技能详情"/>
+    </bean>
+
+    <bean name="AllianceSkillPointInfo">
+        <var name="Time" type="float" comment="触发时间"/>
+        <var name="Multiple" type="float?" comment="伤害倍率"/>
+        <var name="ShakeInfo" type="string?" comment="震屏配置"/>
+    </bean>
+
+    <bean name="AttackDetail">
+        <var name="Duration" type="float" comment="持续时间"/>
+        <var name="MinDuration" type="float?" comment="最小持续时间"/>
+        <var name="ShakeInfo" type="string?" comment="震屏配置"/>
+        <var name="Points" type="(list#sep=;),AttackPointInfo" comment="攻击时间点列表"/>
+    </bean>
+
+    <bean name="AttackInfo">
+        <var name="Points" type="AttackDetail" comment="攻击详情"/>
+    </bean>
+
+    <bean name="AttackPointInfo">
+        <var name="Time" type="float" comment="触发时间"/>
+        <var name="Multiple" type="float?" comment="伤害倍率"/>
+        <var name="ShakeInfo" type="string?" comment="震屏配置"/>
+    </bean>
+
+    <table name="AllianceAttackInfoTable" value="AllianceAttackInfo" input="../datas/battle/我方普通攻击配置表.xlsx" />
+    <table name="AllianceSkillInfoTable" value="AllianceSkillInfo" input="../datas/battle/我方技能配置表.xlsx" />
+
+</module>

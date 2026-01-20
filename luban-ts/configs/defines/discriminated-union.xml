@@ -1,16 +1,24 @@
-<?xml version="1.0" encoding="utf-8"?>
 <module name="discriminated_union" comment="自动生成的 ts class Bean 定义">
 
+    <!-- Test for $type field filtering $type is used for TypeScript discriminated unions but should not be exported to Luban -->
+    <enum name="ShapeType" comment="Test for $type field filtering $type is used for TypeScript discriminated unions but should not be exported to Luban">
+        <var name="Circle" value="circle"/>
+        <var name="Rectangle" value="rectangle"/>
+    </enum>
+
+    <!-- Shape info with discriminated union -->
+    <bean name="ShapeInfo" comment="Shape info with discriminated union">
+        <var name="width" type="double" comment="Width of the shape"/>
+        <var name="height" type="double" comment="Height of the shape"/>
+    </bean>
+
+    <!-- Circle shape -->
     <bean name="CircleShape" parent="ShapeInfo" comment="Circle shape">
         <var name="radius" type="double"/>
     </bean>
 
+    <!-- Rectangle shape -->
     <bean name="RectangleShape" parent="ShapeInfo" comment="Rectangle shape">
-    </bean>
-
-    <bean name="ShapeInfo" comment="Shape info with discriminated union">
-        <var name="width" type="double" comment="Width of the shape"/>
-        <var name="height" type="double" comment="Height of the shape"/>
     </bean>
 
 </module>

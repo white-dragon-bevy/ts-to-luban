@@ -1,0 +1,37 @@
+<module name="role" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 等级配置 -->
+    <bean name="LevelConfig" comment="等级配置">
+        <var name="level" type="int" comment="等级"/>
+        <var name="requiredExp" type="float" comment="升级所需经验(总经验,非等级段经验)"/>
+        <var name="growthAttributes" type="RoleGrowthAttributes" comment="成长属性(增加了多少)"/>
+        <var name="skillLevels" type="(map#sep=,|),string,int" comment="技能初始等级配置(局内游戏技能初始等级)"/>
+        <var name="trait" type="(list#sep=|),string" comment="角色特质"/>
+    </bean>
+
+    <!-- 角色基础属性(不填为0) -->
+    <bean name="RoleBaseAttributes" parent="attribute.BaseAttributes" comment="角色基础属性(不填为0)">
+    </bean>
+
+    <!-- 角色基础配置 -->
+    <bean name="RoleConfig" parent="resource.ResourceConfig" comment="角色基础配置">
+        <var name="roleId" type="int" comment="角色ID"/>
+        <var name="maxLevel" type="int" comment="最大等级,(初版最大配置10)"/>
+        <var name="baseAttributes" type="RoleBaseAttributes" comment="角色基础属性"/>
+        <var name="roleExp" type="float" comment="经验转换值"/>
+        <var name="levels" type="list,LevelConfig" comment="等级配置列表"/>
+        <var name="skills" type="list,SkillConfig" comment="技能配置列表"/>
+    </bean>
+
+    <!-- 角色成长属性 -->
+    <bean name="RoleGrowthAttributes" parent="attribute.BaseAttributes" comment="角色成长属性">
+    </bean>
+
+    <!-- 技能配置 -->
+    <bean name="SkillConfig" comment="技能配置">
+        <var name="skillId" type="string" comment="技能ID"/>
+    </bean>
+
+    <table name="RoleConfigTable" value="RoleConfig" input="../datas/role" />
+
+</module>

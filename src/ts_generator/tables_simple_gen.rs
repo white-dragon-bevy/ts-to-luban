@@ -1,33 +1,40 @@
 use crate::parser::ClassInfo;
+use crate::table_registry::TableRegistry;
 use crate::ts_generator::import_resolver::ImportResolver;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Simple tables generator - only generates type definitions
+/// Uses [[tables]] config from TableRegistry, ignores @LubanTable decorators
 pub struct TablesSimpleGenerator<'a> {
     import_resolver: &'a ImportResolver,
+    table_registry: &'a TableRegistry,
+    default_module_name: &'a str,
 }
 
 impl<'a> TablesSimpleGenerator<'a> {
-    pub fn new(import_resolver: &'a ImportResolver) -> Self {
-        Self { import_resolver }
+    pub fn new(
+        import_resolver: &'a ImportResolver,
+        table_registry: &'a TableRegistry,
+        default_module_name: &'a str,
+    ) -> Self {
+        Self {
+            import_resolver,
+            table_registry,
+            default_module_name,
+        }
     }
 
     /// Generate tables.ts with type definitions only
-    pub fn generate(
-        &self,
-        table_classes: &[&ClassInfo],
-        output_path: &Path,
-    ) -> String {
+    /// Uses [[tables]] config from TableRegistry
+    pub fn generate(&self, table_classes: &[&ClassInfo], output_path: &Path) -> String {
         let mut lines = Vec::new();
 
         // Collect imports
         let mut imports = HashMap::new();
         for class in table_classes {
             let source_path = PathBuf::from(&class.source_file);
-            let import_path = self
-                .import_resolver
-                .resolve(output_path, &source_path);
+            let import_path = self.import_resolver.resolve(output_path, &source_path);
 
             imports
                 .entry(import_path)
@@ -48,16 +55,37 @@ impl<'a> TablesSimpleGenerator<'a> {
             lines.push(String::new());
         }
 
-        // Generate AllTables interface
+        // Generate AllTables interface - use TableRegistry config
         lines.push("export interface AllTables {".to_string());
-        for class in table_classes {
-            let config = class.luban_table.as_ref().unwrap();
-            let table_name = config
-                .table_name
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| format!("{}Table", class.name));
-            let type_def = self.generate_table_type(class, &config.mode, &config.index);
+
+        // Collect and sort table entries
+        let mut table_entries: Vec<_> = table_classes
+            .iter()
+            .filter_map(|class| {
+                // Build full name to look up in registry
+                // Use class's module_name, or fall back to default_module_name
+                let module = class
+                    .module_name
+                    .as_deref()
+                    .unwrap_or(self.default_module_name);
+                let full_name = if module.is_empty() {
+                    class.name.clone()
+                } else {
+                    format!("{}.{}", module, class.name)
+                };
+
+                // Get config from TableRegistry
+                self.table_registry.get_table(&full_name).map(|config| {
+                    let type_def = self.generate_table_type(class, &config.mode, &config.index);
+                    (config.name.clone(), type_def)
+                })
+            })
+            .collect();
+
+        // Sort by table name for consistent output
+        table_entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (table_name, type_def) in table_entries {
             lines.push(format!("    {}: {};", table_name, type_def));
         }
         lines.push("}".to_string());
@@ -107,20 +135,43 @@ impl<'a> TablesSimpleGenerator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{ClassInfo, LubanTableConfig};
+    use crate::config::TableConfig;
+    use crate::parser::{ClassInfo, FieldInfo, ImportMap};
     use crate::ts_generator::ImportResolver;
     use crate::tsconfig::TsConfig;
     use std::path::PathBuf;
 
+    fn create_registry_with_table(
+        full_name: &str,
+        input: &str,
+        name: Option<&str>,
+        mode: Option<&str>,
+        index: Option<&str>,
+    ) -> TableRegistry {
+        let mut tables = HashMap::new();
+        tables.insert(
+            full_name.to_string(),
+            TableConfig::Full {
+                input: input.to_string(),
+                name: name.map(|s| s.to_string()),
+                mode: mode.map(|s| s.to_string()),
+                index: index.map(|s| s.to_string()),
+            },
+        );
+        TableRegistry::from_config(&tables)
+    }
+
     #[test]
     fn test_custom_table_name_override() {
         let resolver = ImportResolver::new(&TsConfig::default());
-        let gen = TablesSimpleGenerator::new(&resolver);
-
-        let mut config = LubanTableConfig::default();
-        config.mode = "map".to_string();
-        config.index = "id".to_string();
-        config.table_name = Some("CustomTableName".to_string());
+        let registry = create_registry_with_table(
+            "IBuffData",
+            "../datas/buff",
+            Some("CustomTableName"),
+            Some("map"),
+            Some("id"),
+        );
+        let gen = TablesSimpleGenerator::new(&resolver, &registry, "");
 
         let class = ClassInfo {
             name: "IBuffData".to_string(),
@@ -135,7 +186,10 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: Default::default(),
-            luban_table: Some(config),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let output_path = PathBuf::from("out/tables.d.ts");
@@ -148,12 +202,14 @@ mod tests {
     #[test]
     fn test_default_table_name_when_no_override() {
         let resolver = ImportResolver::new(&TsConfig::default());
-        let gen = TablesSimpleGenerator::new(&resolver);
-
-        let mut config = LubanTableConfig::default();
-        config.mode = "map".to_string();
-        config.index = "id".to_string();
-        config.table_name = None;
+        let registry = create_registry_with_table(
+            "MyConfig",
+            "../datas/my",
+            None, // No custom name
+            Some("map"),
+            Some("id"),
+        );
+        let gen = TablesSimpleGenerator::new(&resolver, &registry, "");
 
         let class = ClassInfo {
             name: "MyConfig".to_string(),
@@ -168,7 +224,10 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: Default::default(),
-            luban_table: Some(config),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let output_path = PathBuf::from("out/tables.d.ts");
@@ -179,15 +238,15 @@ mod tests {
 
     #[test]
     fn test_map_key_type_from_index_field() {
-        use crate::parser::FieldInfo;
-
         let resolver = ImportResolver::new(&TsConfig::default());
-        let gen = TablesSimpleGenerator::new(&resolver);
-
-        let mut config = LubanTableConfig::default();
-        config.mode = "map".to_string();
-        config.index = "id".to_string();
-        config.table_name = None;
+        let registry = create_registry_with_table(
+            "AnimationItem",
+            "../datas/animation",
+            None,
+            Some("map"),
+            Some("id"),
+        );
+        let gen = TablesSimpleGenerator::new(&resolver, &registry, "");
 
         // Create a class with string id field
         let id_field = FieldInfo {
@@ -210,7 +269,10 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: Default::default(),
-            luban_table: Some(config),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let output_path = PathBuf::from("out/tables.d.ts");
@@ -226,15 +288,15 @@ mod tests {
 
     #[test]
     fn test_map_key_type_number_for_numeric_index() {
-        use crate::parser::FieldInfo;
-
         let resolver = ImportResolver::new(&TsConfig::default());
-        let gen = TablesSimpleGenerator::new(&resolver);
-
-        let mut config = LubanTableConfig::default();
-        config.mode = "map".to_string();
-        config.index = "id".to_string();
-        config.table_name = None;
+        let registry = create_registry_with_table(
+            "ItemConfig",
+            "../datas/item",
+            None,
+            Some("map"),
+            Some("id"),
+        );
+        let gen = TablesSimpleGenerator::new(&resolver, &registry, "");
 
         // Create a class with number id field
         let id_field = FieldInfo {
@@ -257,7 +319,10 @@ mod tests {
             output_path: None,
             module_name: None,
             type_params: Default::default(),
-            luban_table: Some(config),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let output_path = PathBuf::from("out/tables.d.ts");

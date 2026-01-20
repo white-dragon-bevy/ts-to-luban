@@ -1,29 +1,26 @@
 use crate::parser::field_info::SizeConstraint;
-use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators};
-use crate::table_mapping::TableMappingResolver;
-use crate::table_registry::TableRegistry;
+use crate::parser::{ClassInfo, EnumInfo, FieldInfo, FieldValidators, ImportMap};
+use crate::table_registry::{ResolvedTableConfig, TableRegistry};
 use crate::type_mapper::TypeMapper;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub struct XmlGenerator<'a> {
     type_mapper: &'a TypeMapper,
     table_registry: &'a TableRegistry,
-    table_mapping_resolver: &'a TableMappingResolver,
     /// Mapping from type name to module name (for cross-module type resolution)
     type_to_module: HashMap<String, String>,
+    /// Mapping from source file path to module name (for import-based type resolution)
+    file_to_module: HashMap<PathBuf, String>,
 }
 
 impl<'a> XmlGenerator<'a> {
-    pub fn new(
-        type_mapper: &'a TypeMapper,
-        table_registry: &'a TableRegistry,
-        table_mapping_resolver: &'a TableMappingResolver,
-    ) -> Self {
+    pub fn new(type_mapper: &'a TypeMapper, table_registry: &'a TableRegistry) -> Self {
         Self {
             type_mapper,
             table_registry,
-            table_mapping_resolver,
             type_to_module: HashMap::new(),
+            file_to_module: HashMap::new(),
         }
     }
 
@@ -31,14 +28,28 @@ impl<'a> XmlGenerator<'a> {
     pub fn with_type_mapping(
         type_mapper: &'a TypeMapper,
         table_registry: &'a TableRegistry,
-        table_mapping_resolver: &'a TableMappingResolver,
         type_to_module: HashMap<String, String>,
     ) -> Self {
         Self {
             type_mapper,
             table_registry,
-            table_mapping_resolver,
             type_to_module,
+            file_to_module: HashMap::new(),
+        }
+    }
+
+    /// Create a new XmlGenerator with both type-to-module and file-to-module mappings
+    pub fn with_type_and_file_mapping(
+        type_mapper: &'a TypeMapper,
+        table_registry: &'a TableRegistry,
+        type_to_module: HashMap<String, String>,
+        file_to_module: HashMap<PathBuf, String>,
+    ) -> Self {
+        Self {
+            type_mapper,
+            table_registry,
+            type_to_module,
+            file_to_module,
         }
     }
 
@@ -53,11 +64,33 @@ impl<'a> XmlGenerator<'a> {
         module_name: &str,
         all_classes: &[ClassInfo],
     ) -> String {
+        // For backward compatibility, call with empty enums
+        self.generate_with_all_classes_and_enums(classes, &[], module_name, all_classes)
+    }
+
+    pub fn generate_with_all_classes_and_enums(
+        &self,
+        classes: &[ClassInfo],
+        enums: &[EnumInfo],
+        module_name: &str,
+        all_classes: &[ClassInfo],
+    ) -> String {
+        // Determine comment based on content
+        let has_beans = !classes.is_empty();
+        let has_enums = !enums.is_empty();
+        let comment = if has_beans {
+            "自动生成的 ts class Bean 定义"
+        } else if has_enums {
+            "自动生成的 ts enum 定义"
+        } else {
+            "自动生成的定义"
+        };
+
         let mut lines = vec![
-            r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
             format!(
-                r#"<module name="{}" comment="自动生成的 ts class Bean 定义">"#,
-                escape_xml(module_name)
+                r#"<module name="{}" comment="{}">"#,
+                escape_xml(module_name),
+                comment
             ),
             String::new(),
         ];
@@ -71,22 +104,38 @@ impl<'a> XmlGenerator<'a> {
             }
         }
 
-        // Deduplicate classes by name, prioritizing @LubanTable classes
-        let mut seen: std::collections::HashMap<String, &ClassInfo> = std::collections::HashMap::new();
-        for class in classes {
-            let name = &class.name;
-            if let Some(existing) = seen.get(name) {
-                // If existing class has no @LubanTable but current has, replace it
-                if existing.luban_table.is_none() && class.luban_table.is_some() {
-                    seen.insert(name.clone(), class);
-                }
-            } else {
-                seen.insert(name.clone(), class);
+        // Generate enums first (before beans)
+        if !enums.is_empty() {
+            // Keep original source file order (no sorting)
+            let sorted_enums: Vec<_> = enums.iter().collect();
+
+            for enum_info in sorted_enums {
+                generate_enum(&mut lines, enum_info);
+                lines.push(String::new());
             }
         }
-        let mut unique_classes: Vec<_> = seen.values().collect();
-        // Sort beans by name for consistent output
-        unique_classes.sort_by(|a, b| a.name.cmp(&b.name));
+
+        // Deduplicate classes by name, prioritizing @LubanTable classes
+        // Use a Vec to preserve insertion order
+        let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut unique_classes: Vec<&ClassInfo> = Vec::new();
+
+        // First pass: collect classes with @LubanTable
+        for class in classes {
+            if class.luban_table.is_some() && !seen_names.contains(&class.name) {
+                seen_names.insert(class.name.clone());
+                unique_classes.push(class);
+            }
+        }
+
+        // Second pass: collect remaining classes (without @LubanTable)
+        for class in classes {
+            if !seen_names.contains(&class.name) {
+                seen_names.insert(class.name.clone());
+                unique_classes.push(class);
+            }
+        }
+        // Keep original source file order (no sorting)
 
         // Generate beans
         for class in &unique_classes {
@@ -94,111 +143,52 @@ impl<'a> XmlGenerator<'a> {
             lines.push(String::new());
         }
 
-        // Generate tables for @LubanTable classes
-        // First collect tables with their resolved names for sorting
-        let mut table_entries: Vec<_> = classes
+        // Generate tables from [tables] config in registry
+        // Look up each class by its full name (module.ClassName) in the registry
+        let table_entries: Vec<&ResolvedTableConfig> = classes
             .iter()
-            .filter(|c| c.luban_table.is_some())
-            .map(|class| {
-                let (input, output, table_name_override) = self
-                    .table_mapping_resolver
-                    .resolve(&class.name)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Error: No table_mapping for class '{}'. Add [[table_mappings]] in config.",
-                            class.name
-                        )
-                    });
-                let table_name = table_name_override.unwrap_or_else(|| format!("{}Table", class.name));
-                (class, table_name, input, output)
+            .filter_map(|class| {
+                // Build full name: module.ClassName
+                let full_name = if module_name.is_empty() {
+                    class.name.clone()
+                } else {
+                    format!("{}.{}", module_name, class.name)
+                };
+                self.table_registry.get_table(&full_name)
             })
             .collect();
-        // Sort by table name for consistent output
-        table_entries.sort_by(|a, b| a.1.cmp(&b.1));
 
         if !table_entries.is_empty() {
-            lines.push("    <!-- 数据表配置 -->".to_string());
-            for (class, table_name, input, output) in table_entries {
-                self.generate_table_element_with_resolved(&mut lines, class, &table_name, &input, output.as_deref());
+            for table_config in &table_entries {
+                self.generate_table_from_config(&mut lines, table_config);
             }
             lines.push(String::new());
         }
 
         lines.push("</module>".to_string());
-        lines.join("\n")
+        lines.join("\n") + "\n"
     }
 
-    /// Generate table element with pre-resolved table name, input, and output
-    fn generate_table_element_with_resolved(
-        &self,
-        lines: &mut Vec<String>,
-        class: &ClassInfo,
-        table_name: &str,
-        input: &str,
-        output: Option<&str>,
-    ) {
-        let config = class.luban_table.as_ref().unwrap();
-
+    /// Generate table element from ResolvedTableConfig
+    fn generate_table_from_config(&self, lines: &mut Vec<String>, config: &ResolvedTableConfig) {
         let mut attrs = vec![
-            format!(r#"name="{}""#, table_name),
-            format!(r#"value="{}""#, class.name),
-            format!(r#"mode="{}""#, config.mode),
-            format!(r#"index="{}""#, config.index),
-            format!(r#"input="{}""#, input),
+            format!(r#"name="{}""#, config.name),
+            format!(r#"value="{}""#, config.class_name),
         ];
 
-        if let Some(out) = output {
-            attrs.push(format!(r#"output="{}""#, out));
+        // Only add mode and index if mode is not "map" (map is the default)
+        if config.mode != "map" {
+            attrs.push(format!(r#"mode="{}""#, config.mode));
         }
 
-        if let Some(group) = &config.group {
-            attrs.push(format!(r#"group="{}""#, group));
+        // Always add index for map mode
+        if config.mode == "map" {
+            attrs.push(format!(r#"index="{}""#, config.index));
         }
 
-        if let Some(tags) = &config.tags {
-            attrs.push(format!(r#"tags="{}""#, tags));
-        }
+        attrs.push(format!(r#"input="{}""#, config.input));
 
-        lines.push(format!(r#"    <table {}/>"#, attrs.join(" ")));
-    }
-
-    fn generate_table_element(&self, lines: &mut Vec<String>, class: &ClassInfo) {
-        let config = class.luban_table.as_ref().unwrap();
-
-        // Resolve input/output from table_mappings config
-        let (input, output, table_name_override) = self
-            .table_mapping_resolver
-            .resolve(&class.name)
-            .unwrap_or_else(|| {
-                panic!(
-                    "Error: No table_mapping for class '{}'. Add [[table_mappings]] in config.",
-                    class.name
-                )
-            });
-
-        let table_name = table_name_override.unwrap_or_else(|| format!("{}Table", class.name));
-
-        let mut attrs = vec![
-            format!(r#"name="{}""#, table_name),
-            format!(r#"value="{}""#, class.name),
-            format!(r#"mode="{}""#, config.mode),
-            format!(r#"index="{}""#, config.index),
-            format!(r#"input="{}""#, input),
-        ];
-
-        if let Some(out) = output {
-            attrs.push(format!(r#"output="{}""#, out));
-        }
-
-        if let Some(group) = &config.group {
-            attrs.push(format!(r#"group="{}""#, group));
-        }
-
-        if let Some(tags) = &config.tags {
-            attrs.push(format!(r#"tags="{}""#, tags));
-        }
-
-        lines.push(format!(r#"    <table {}/>"#, attrs.join(" ")));
+        lines.push(format!(r#"    <table {} />"#, attrs.join(" ")));
     }
 
     fn generate_bean(&self, lines: &mut Vec<String>, class: &ClassInfo, all_classes: &[ClassInfo]) {
@@ -223,8 +213,8 @@ impl<'a> XmlGenerator<'a> {
             self.resolve_class_parent(class, all_classes)
         };
 
-        // Resolve parent with module prefix if needed
-        let resolved_parent = self.resolve_type_with_module(&parent, current_module, class_to_module);
+        // Resolve parent with module prefix if needed, using imports for accurate resolution
+        let resolved_parent = self.resolve_type_with_imports(&parent, current_module, class_to_module, &class.imports);
 
         let alias_attr = class
             .alias
@@ -235,6 +225,7 @@ impl<'a> XmlGenerator<'a> {
         let comment_attr = class
             .comment
             .as_ref()
+            .filter(|c| !c.is_empty())
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
@@ -243,6 +234,13 @@ impl<'a> XmlGenerator<'a> {
         } else {
             format!(r#" parent="{}""#, resolved_parent)
         };
+
+        // Add XML comment before bean if comment exists
+        if let Some(comment) = &class.comment {
+            if !comment.is_empty() {
+                lines.push(format!("    <!-- {} -->", escape_xml(comment)));
+            }
+        }
 
         lines.push(format!(
             r#"    <bean name="{}"{}{}{}>"#,
@@ -272,7 +270,7 @@ impl<'a> XmlGenerator<'a> {
         // Skip $type field (used for TypeScript discriminated unions, not needed in Luban)
         for field in &class.fields {
             if !parent_field_names.contains(field.name.as_str()) && field.name != "$type" {
-                self.generate_field_with_module_map(lines, field, current_module, class_to_module);
+                self.generate_field_with_imports(lines, field, current_module, class_to_module, &class.imports);
             }
         }
 
@@ -286,11 +284,37 @@ impl<'a> XmlGenerator<'a> {
         current_module: &str,
         class_to_module: &HashMap<String, String>,
     ) -> String {
+        // Use the new import-aware resolution with empty imports (for backward compatibility)
+        self.resolve_type_with_imports(type_name, current_module, class_to_module, &ImportMap::new())
+    }
+
+    /// Resolve a type name with module prefix, using imports to determine the correct module
+    /// This handles the case where same-named types exist in different modules
+    fn resolve_type_with_imports(
+        &self,
+        type_name: &str,
+        current_module: &str,
+        class_to_module: &HashMap<String, String>,
+        imports: &ImportMap,
+    ) -> String {
         if type_name.is_empty() {
             return String::new();
         }
 
-        // Check if this type is in the class_to_module mapping
+        // First, check if this type was imported from a specific file
+        if let Some(import_source_path) = imports.get(type_name) {
+            // Look up the module for this source file
+            if let Some(target_module) = self.file_to_module.get(import_source_path) {
+                // If the imported type is from a different module, add the module prefix
+                if target_module != current_module && !target_module.is_empty() {
+                    return format!("{}.{}", target_module, type_name);
+                }
+                // Same module - no prefix needed
+                return type_name.to_string();
+            }
+        }
+
+        // Fall back to the global class_to_module mapping
         if let Some(target_module) = class_to_module.get(type_name) {
             // If the type is from a different module, add the module prefix
             if target_module != current_module && !target_module.is_empty() {
@@ -334,10 +358,22 @@ impl<'a> XmlGenerator<'a> {
         current_module: &str,
         class_to_module: &std::collections::HashMap<String, String>,
     ) {
+        // For backward compatibility, use empty imports
+        self.generate_field_with_imports(lines, field, current_module, class_to_module, &ImportMap::new());
+    }
+
+    fn generate_field_with_imports(
+        &self,
+        lines: &mut Vec<String>,
+        field: &FieldInfo,
+        current_module: &str,
+        class_to_module: &std::collections::HashMap<String, String>,
+        imports: &ImportMap,
+    ) {
         // Handle Constructor<T> fields
         if field.is_constructor {
             if let Some(constructor_type) = &field.constructor_inner_type {
-                let resolved_constructor_type = self.resolve_type_with_module(constructor_type, current_module, class_to_module);
+                let resolved_constructor_type = self.resolve_type_with_imports(constructor_type, current_module, class_to_module, imports);
                 let mut final_type = String::from("string");
                 if field.is_optional {
                     final_type.push('?');
@@ -370,7 +406,12 @@ impl<'a> XmlGenerator<'a> {
             }
         }
 
-        let mut mapped_type = self.type_mapper.map_full_type(&field.field_type);
+        // Apply @type override if present, otherwise use mapped type
+        let mut mapped_type = if let Some(type_override) = &field.type_override {
+            type_override.clone()
+        } else {
+            self.type_mapper.map_full_type(&field.field_type)
+        };
         let validators = &field.validators;
 
         // @Set only supports int/long/string/enum, not double
@@ -379,8 +420,8 @@ impl<'a> XmlGenerator<'a> {
             mapped_type = "int".to_string();
         }
 
-        // Resolve type references with module prefix
-        mapped_type = self.resolve_full_type_with_module(&mapped_type, current_module, class_to_module);
+        // Resolve type references with module prefix, using imports for accurate resolution
+        mapped_type = self.resolve_full_type_with_imports(&mapped_type, current_module, class_to_module, imports);
 
         // Check if this is a container type (list, map, array, set)
         let is_container = mapped_type.starts_with("list,")
@@ -389,11 +430,25 @@ impl<'a> XmlGenerator<'a> {
             || mapped_type.starts_with("set,");
 
         let final_type = if is_container {
-            // Handle container types with size/index validators
-            self.apply_container_validators_with_module(&mapped_type, validators, current_module, class_to_module)
+            // Handle container types with size/index validators and separators
+            // Note: mapped_type is already resolved with module prefixes
+            self.apply_container_validators_with_module_and_separators(
+                &mapped_type,
+                validators,
+                current_module,
+                class_to_module,
+                field.separator.as_deref(),
+                field.map_separator.as_deref(),
+                field.default_value.as_deref(),
+            )
         } else {
-            // Handle scalar types with validators
-            self.apply_scalar_validators(&mapped_type, validators, field.is_optional)
+            // Handle scalar types with validators and default value
+            self.apply_scalar_validators_with_default(
+                &mapped_type,
+                validators,
+                field.is_optional,
+                field.default_value.as_deref(),
+            )
         };
 
         let comment_attr = field
@@ -475,6 +530,49 @@ impl<'a> XmlGenerator<'a> {
         self.resolve_type_with_module(type_str, current_module, class_to_module)
     }
 
+    /// Resolve a full type string (including list,T and map,K,V) with module prefixes, using imports
+    fn resolve_full_type_with_imports(
+        &self,
+        type_str: &str,
+        current_module: &str,
+        class_to_module: &std::collections::HashMap<String, String>,
+        imports: &ImportMap,
+    ) -> String {
+        // Handle list,T
+        if type_str.starts_with("list,") {
+            let element = &type_str[5..];
+            let resolved_element = self.resolve_type_with_imports(element, current_module, class_to_module, imports);
+            return format!("list,{}", resolved_element);
+        }
+
+        // Handle map,K,V
+        if type_str.starts_with("map,") {
+            let parts: Vec<&str> = type_str[4..].splitn(2, ',').collect();
+            if parts.len() == 2 {
+                let resolved_key = self.resolve_type_with_imports(parts[0], current_module, class_to_module, imports);
+                let resolved_value = self.resolve_type_with_imports(parts[1], current_module, class_to_module, imports);
+                return format!("map,{},{}", resolved_key, resolved_value);
+            }
+        }
+
+        // Handle array,T
+        if type_str.starts_with("array,") {
+            let element = &type_str[6..];
+            let resolved_element = self.resolve_type_with_imports(element, current_module, class_to_module, imports);
+            return format!("array,{}", resolved_element);
+        }
+
+        // Handle set,T
+        if type_str.starts_with("set,") {
+            let element = &type_str[4..];
+            let resolved_element = self.resolve_type_with_imports(element, current_module, class_to_module, imports);
+            return format!("set,{}", resolved_element);
+        }
+
+        // Simple type
+        self.resolve_type_with_imports(type_str, current_module, class_to_module, imports)
+    }
+
     /// Apply validators to scalar types
     /// e.g., "int" -> "int!#ref=examples.TbItem#range=[1,100]"
     fn apply_scalar_validators(
@@ -502,7 +600,7 @@ impl<'a> XmlGenerator<'a> {
         if let Some(ref_target) = &validators.ref_target {
             // Must resolve via registry, error if not found
             let resolved = self.table_registry.resolve_ref(ref_target)
-                .unwrap_or_else(|| panic!("Error: @Ref target '{}' not found. Make sure '{}' has @LubanTable decorator.", ref_target, ref_target));
+                .unwrap_or_else(|| panic!("Error: @Ref target '{}' not found. Make sure '{}' is configured in [tables] section.", ref_target, ref_target));
             validator_parts.push(format!("ref={}", resolved));
         }
 
@@ -523,6 +621,153 @@ impl<'a> XmlGenerator<'a> {
         // Append validators with # prefix
         if !validator_parts.is_empty() {
             result.push_str(&format!("#{}", validator_parts.join("#")));
+        }
+
+        result
+    }
+
+    /// Apply validators to scalar types with default value support
+    /// e.g., "int" -> "int!#ref=examples.TbItem#range=[1,100]#default=0"
+    fn apply_scalar_validators_with_default(
+        &self,
+        base_type: &str,
+        validators: &FieldValidators,
+        is_optional: bool,
+        default_value: Option<&str>,
+    ) -> String {
+        let mut result = base_type.to_string();
+
+        // Add optional marker
+        if is_optional {
+            result.push('?');
+        }
+
+        // Add required marker (!) - notDefaultValue validator
+        if validators.required {
+            result.push('!');
+        }
+
+        // Collect validator suffixes
+        let mut validator_parts = Vec::new();
+
+        // Handle ref - resolve full namespace path using TableRegistry
+        if let Some(ref_target) = &validators.ref_target {
+            // Must resolve via registry, error if not found
+            let resolved = self.table_registry.resolve_ref(ref_target)
+                .unwrap_or_else(|| panic!("Error: @Ref target '{}' not found. Make sure '{}' is configured in [tables] section.", ref_target, ref_target));
+            validator_parts.push(format!("ref={}", resolved));
+        }
+
+        // Handle range
+        if let Some((min, max)) = &validators.range {
+            // Format numbers nicely (remove unnecessary decimal points)
+            let min_str = format_number(*min);
+            let max_str = format_number(*max);
+            validator_parts.push(format!("range=[{},{}]", min_str, max_str));
+        }
+
+        // Handle set
+        if !validators.set_values.is_empty() {
+            let set_str = validators.set_values.join(",");
+            validator_parts.push(format!("set={}", set_str));
+        }
+
+        // Handle default value
+        if let Some(default) = default_value {
+            validator_parts.push(format!("default={}", default));
+        }
+
+        // Append validators with # prefix
+        if !validator_parts.is_empty() {
+            result.push_str(&format!("#{}", validator_parts.join("#")));
+        }
+
+        result
+    }
+
+    /// Apply validators to container types with module resolution and separator support
+    /// e.g., "list,string" -> "(list#sep=|),string" or "map,string,int" -> "(map#sep=,|),string,int"
+    fn apply_container_validators_with_module_and_separators(
+        &self,
+        container_type: &str,
+        validators: &FieldValidators,
+        _current_module: &str,
+        _class_to_module: &std::collections::HashMap<String, String>,
+        separator: Option<&str>,
+        map_separator: Option<&str>,
+        default_value: Option<&str>,
+    ) -> String {
+        // Parse container type: "list,ElementType" or "map,KeyType,ValueType"
+        // Note: ElementType may already have module prefix like "enums.QualityType"
+        let parts: Vec<&str> = container_type.splitn(2, ',').collect();
+        if parts.len() < 2 {
+            return container_type.to_string();
+        }
+
+        let container = parts[0];
+        let element_type = parts[1];
+
+        // Build container validators
+        let mut container_mods = Vec::new();
+
+        // Handle separator for list types
+        if container == "list" || container == "array" || container == "set" {
+            if let Some(sep) = separator {
+                container_mods.push(format!("sep={}", sep));
+            }
+        }
+
+        // Handle map separator for map types
+        if container == "map" {
+            if let Some(sep) = map_separator {
+                container_mods.push(format!("sep={}", sep));
+            }
+        }
+
+        if let Some(size) = &validators.size {
+            match size {
+                SizeConstraint::Exact(n) => container_mods.push(format!("size={}", n)),
+                SizeConstraint::Range(min, max) => {
+                    container_mods.push(format!("size=[{},{}]", min, max))
+                }
+            }
+        }
+
+        if let Some(index) = &validators.index_field {
+            container_mods.push(format!("index={}", index));
+        }
+
+        // Build element type with its validators (ref, range, set, required)
+        // Note: element_type is already resolved with module prefix
+        let element_validators = FieldValidators {
+            ref_target: validators.ref_target.clone(),
+            range: validators.range,
+            required: validators.required,
+            set_values: validators.set_values.clone(),
+            // These are container-level, not element-level
+            size: None,
+            index_field: None,
+            nominal: validators.nominal,
+        };
+
+        let element_with_validators =
+            self.apply_scalar_validators_with_default(element_type, &element_validators, false, None);
+
+        // Build the final type string
+        let mut result = if container_mods.is_empty() {
+            format!("{},{}", container, element_with_validators)
+        } else {
+            format!(
+                "({}#{}),{}",
+                container,
+                container_mods.join("#"),
+                element_with_validators
+            )
+        };
+
+        // Append default value at the end if present
+        if let Some(default) = default_value {
+            result.push_str(&format!("#default={}", default));
         }
 
         result
@@ -672,7 +917,6 @@ fn format_number(n: f64) -> String {
 /// Generate XML for enums only
 pub fn generate_enum_xml(enums: &[EnumInfo], module_name: &str) -> String {
     let mut lines = vec![
-        r#"<?xml version="1.0" encoding="utf-8"?>"#.to_string(),
         format!(
             r#"<module name="{}" comment="自动生成的 ts enum 定义">"#,
             escape_xml(module_name)
@@ -686,7 +930,7 @@ pub fn generate_enum_xml(enums: &[EnumInfo], module_name: &str) -> String {
     }
 
     lines.push("</module>".to_string());
-    lines.join("\n")
+    lines.join("\n") + "\n"
 }
 
 fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
@@ -702,15 +946,28 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
         String::new()
     };
 
+    let tags_attr = enum_info
+        .tags
+        .as_ref()
+        .map(|t| format!(r#" tags="{}""#, escape_xml(t)))
+        .unwrap_or_default();
+
     let comment_attr = enum_info
         .comment
         .as_ref()
         .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
         .unwrap_or_default();
 
+    // Add XML comment before enum if comment exists
+    if let Some(comment) = &enum_info.comment {
+        if !comment.is_empty() {
+            lines.push(format!("    <!-- {} -->", escape_xml(comment)));
+        }
+    }
+
     lines.push(format!(
-        r#"    <enum name="{}"{}{}{}>"#,
-        enum_info.name, alias_attr, flags_attr, comment_attr
+        r#"    <enum name="{}"{}{}{}{}>"#,
+        enum_info.name, alias_attr, flags_attr, tags_attr, comment_attr
     ));
 
     for variant in &enum_info.variants {
@@ -726,11 +983,18 @@ fn generate_enum(lines: &mut Vec<String>, enum_info: &EnumInfo) {
             .map(|c| format!(r#" comment="{}""#, escape_xml(c)))
             .unwrap_or_default();
 
+        // Format: name, alias (if present), value, comment (if present)
+        // alias needs a leading space, value needs a leading space after alias or name
+        let alias_part = if var_alias_attr.is_empty() {
+            " ".to_string()
+        } else {
+            format!("{} ", var_alias_attr)
+        };
         lines.push(format!(
-            r#"        <var name="{}" value="{}"{}{}/>"#,
+            r#"        <var name="{}"{}value="{}"{}/>"#,
             variant.name,
+            alias_part,
             escape_xml(&variant.value),
-            var_alias_attr,
             var_comment_attr
         ));
     }
@@ -816,7 +1080,7 @@ pub fn generate_bean_type_enums_xml(
     lines.join("\n")
 }
 
-/// Generate a single <table> element for a class with @LubanTable decorator
+/// Generate a single <table> element for a class configured in [tables] section
 pub fn generate_table(class: &ClassInfo, input: &str, output: &str) -> String {
     let config = class
         .luban_table
@@ -840,15 +1104,14 @@ pub fn generate_table(class: &ClassInfo, input: &str, output: &str) -> String {
         attrs.push(format!(r#"tags="{}""#, tags));
     }
 
-    format!(r#"    <table {}/>"#, attrs.join(" "))
+    format!(r#"    <table {} />"#, attrs.join(" "))
 }
 
 #[cfg(test)]
 fn generate_xml(classes: &[ClassInfo]) -> String {
     let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
     let table_registry = TableRegistry::new();
-    let table_mapping_resolver = TableMappingResolver::new(&[]);
-    let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+    let generator = XmlGenerator::new(&type_mapper, &table_registry);
     generator.generate(classes, "")
 }
 
@@ -870,6 +1133,10 @@ mod tests {
             constructor_inner_type: None,
             original_type: field_type.to_string(),
             relocate_tags: None,
+            default_value: None,
+            type_override: None,
+            separator: None,
+            map_separator: None,
         }
     }
 
@@ -892,6 +1159,10 @@ mod tests {
                 constructor_inner_type: None,
                 original_type: "string".to_string(),
                 relocate_tags: None,
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
             }],
             implements: vec![],
             extends: Some("BaseClass".to_string()),
@@ -902,6 +1173,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -925,6 +1199,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -947,6 +1224,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -971,6 +1251,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -993,6 +1276,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1015,6 +1301,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[interface]);
@@ -1040,6 +1329,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1062,6 +1354,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1085,6 +1380,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1108,6 +1406,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let child_interface = ClassInfo {
@@ -1124,6 +1425,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let class = ClassInfo {
@@ -1140,6 +1444,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[base_interface, child_interface, class]);
@@ -1163,6 +1470,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1186,6 +1496,7 @@ mod tests {
             comment: Some("物品类型".to_string()),
             is_string_enum: true,
             is_flags: false,
+            tags: None,
             variants: vec![
                 EnumVariant {
                     name: "Role".to_string(),
@@ -1223,6 +1534,7 @@ mod tests {
             comment: Some("技能类型".to_string()),
             is_string_enum: false,
             is_flags: false,
+            tags: None,
             variants: vec![
                 EnumVariant {
                     name: "Attack".to_string(),
@@ -1262,6 +1574,7 @@ mod tests {
             comment: Some("权限控制".to_string()),
             is_string_enum: false,
             is_flags: true,
+            tags: None,
             variants: vec![
                 EnumVariant {
                     name: "CAN_MOVE".to_string(),
@@ -1285,10 +1598,10 @@ mod tests {
         let xml = generate_enum_xml(&[enum_info], "test");
         // Should have flags="true" attribute
         assert!(xml.contains(r#"<enum name="UnitFlag" flags="true" comment="权限控制">"#));
-        // Should have alias attribute (from @alias tag)
-        assert!(xml.contains(r#"<var name="CAN_MOVE" value="1" alias="移动" comment="可以移动"/>"#));
+        // Should have alias attribute before value (from @alias tag)
+        assert!(xml.contains(r#"<var name="CAN_MOVE" alias="移动" value="1" comment="可以移动"/>"#));
         assert!(
-            xml.contains(r#"<var name="CAN_ATTACK" value="2" alias="攻击" comment="可以攻击"/>"#)
+            xml.contains(r#"<var name="CAN_ATTACK" alias="攻击" value="2" comment="可以攻击"/>"#)
         );
     }
 
@@ -1312,6 +1625,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "ObjectFactory<BaseTrigger>[]".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
                 FieldInfo {
                     name: "normalField".to_string(),
@@ -1326,6 +1643,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "string".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
             ],
             implements: vec![],
@@ -1337,6 +1658,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1370,6 +1694,10 @@ mod tests {
                 constructor_inner_type: None,
                 original_type: "ObjectFactory<ScalingStat>".to_string(),
                 relocate_tags: Some("relocateTo=TScalingStat,prefix=_main".to_string()),
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
             }],
             implements: vec![],
             extends: None,
@@ -1380,6 +1708,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1414,6 +1745,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "ShapeType".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
                 FieldInfo {
                     name: "width".to_string(),
@@ -1428,6 +1763,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
             ],
             implements: vec![],
@@ -1439,6 +1778,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1449,7 +1791,7 @@ mod tests {
     }
 
     #[test]
-    fn test_beans_sorted_by_name() {
+    fn test_beans_keep_source_order() {
         // Create classes in non-alphabetical order
         let class_z = ClassInfo {
             name: "ZClass".to_string(),
@@ -1465,6 +1807,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let class_a = ClassInfo {
@@ -1481,6 +1826,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let class_m = ClassInfo {
@@ -1497,9 +1845,12 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
-        // Pass classes in Z, A, M order
+        // Pass classes in Z, A, M order - should preserve this order
         let xml = generate_xml(&[class_z, class_a, class_m]);
 
         // Find positions of each bean in the output
@@ -1507,9 +1858,9 @@ mod tests {
         let pos_m = xml.find(r#"<bean name="MClass""#).expect("MClass not found");
         let pos_z = xml.find(r#"<bean name="ZClass""#).expect("ZClass not found");
 
-        // Beans should be sorted alphabetically: A < M < Z
-        assert!(pos_a < pos_m, "AClass should come before MClass");
-        assert!(pos_m < pos_z, "MClass should come before ZClass");
+        // Beans should keep source order: Z < A < M (as passed in)
+        assert!(pos_z < pos_a, "ZClass should come before AClass (source order)");
+        assert!(pos_a < pos_m, "AClass should come before MClass (source order)");
     }
 
     #[test]
@@ -1532,6 +1883,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "string".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
                 FieldInfo {
                     name: "component".to_string(),
@@ -1546,6 +1901,10 @@ mod tests {
                     constructor_inner_type: Some("ComponentCls".to_string()),
                     original_type: "Constructor<ComponentCls>".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
             ],
             implements: vec![],
@@ -1557,6 +1916,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1585,6 +1947,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "int".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
                 FieldInfo {
                     name: "name".to_string(),
@@ -1599,6 +1965,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "string".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
                 FieldInfo {
                     name: "value".to_string(),
@@ -1613,6 +1983,10 @@ mod tests {
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
                     relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
                 },
             ],
             implements: vec![],
@@ -1624,6 +1998,9 @@ mod tests {
             module_name: None,
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let xml = generate_xml(&[class]);
@@ -1661,6 +2038,9 @@ mod tests {
             module_name: Some("resource".to_string()),
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         // WeaponConfig is in module "weapon", extends ResourceConfig
@@ -1678,13 +2058,15 @@ mod tests {
             module_name: Some("weapon".to_string()),
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         // Generate XML for weapon module (which references resource module)
         let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
         let table_registry = TableRegistry::new();
-        let table_mapping_resolver = TableMappingResolver::new(&[]);
-        let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
 
         // Pass all classes so the generator can build the class-to-module mapping
         let all_classes = vec![resource_config, weapon_config.clone()];
@@ -1719,6 +2101,9 @@ mod tests {
             module_name: Some("resource".to_string()),
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         // QualityType enum (simulated as a class for the mapping)
@@ -1736,12 +2121,14 @@ mod tests {
             module_name: Some("enums".to_string()),
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
         let table_registry = TableRegistry::new();
-        let table_mapping_resolver = TableMappingResolver::new(&[]);
-        let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
 
         let all_classes = vec![resource_config.clone(), quality_type];
         let xml = generator.generate_with_all_classes(&[resource_config], "resource", &all_classes);
@@ -1771,6 +2158,9 @@ mod tests {
             module_name: Some("weapon".to_string()),
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let weapon_config = ClassInfo {
@@ -1787,12 +2177,14 @@ mod tests {
             module_name: Some("weapon".to_string()),
             type_params: std::collections::HashMap::new(),
             luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
         };
 
         let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
         let table_registry = TableRegistry::new();
-        let table_mapping_resolver = TableMappingResolver::new(&[]);
-        let generator = XmlGenerator::new(&type_mapper, &table_registry, &table_mapping_resolver);
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
 
         let all_classes = vec![weapon_level_config, weapon_config.clone()];
         let xml = generator.generate_with_all_classes(&[weapon_config], "weapon", &all_classes);
@@ -1801,6 +2193,614 @@ mod tests {
         assert!(
             xml.contains(r#"type="list,WeaponLevelConfig""#),
             "Same module types should not have prefix. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_type_override() {
+        let class = ClassInfo {
+            name: "ConfigWithTypeOverride".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "count".to_string(),
+                    field_type: "number".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "number".to_string(),
+                    relocate_tags: None,
+                    default_value: None,
+                    type_override: Some("int".to_string()),
+                    separator: None,
+                    map_separator: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // Type should be overridden to int instead of double
+        assert!(
+            xml.contains(r#"type="int""#),
+            "@type override should change number to int. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_default_value() {
+        let class = ClassInfo {
+            name: "ConfigWithDefault".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "value".to_string(),
+                    field_type: "number".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "number".to_string(),
+                    relocate_tags: None,
+                    default_value: Some("0".to_string()),
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // Type should include default value
+        assert!(
+            xml.contains(r#"type="double#default=0""#),
+            "@default should add #default=0 to type. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_type_override_with_default() {
+        let class = ClassInfo {
+            name: "ConfigWithTypeAndDefault".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "level".to_string(),
+                    field_type: "number".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "number".to_string(),
+                    relocate_tags: None,
+                    default_value: Some("1".to_string()),
+                    type_override: Some("int".to_string()),
+                    separator: None,
+                    map_separator: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // Type should be overridden and include default value
+        assert!(
+            xml.contains(r#"type="int#default=1""#),
+            "@type and @default should combine. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_list_separator() {
+        let class = ClassInfo {
+            name: "ConfigWithListSep".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "tags".to_string(),
+                    field_type: "list,string".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "string[]".to_string(),
+                    relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: Some("|".to_string()),
+                    map_separator: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // List should have separator
+        assert!(
+            xml.contains(r#"type="(list#sep=|),string""#),
+            "@sep should add separator to list. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_map_separator() {
+        let class = ClassInfo {
+            name: "ConfigWithMapSep".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "data".to_string(),
+                    field_type: "map,string,int".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "Map<string, int>".to_string(),
+                    relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: None,
+                    map_separator: Some(",|".to_string()),
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // Map should have separator
+        assert!(
+            xml.contains(r#"type="(map#sep=,|),string,int""#),
+            "@mapsep should add separator to map. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_list_with_separator_and_size() {
+        let class = ClassInfo {
+            name: "ConfigWithListSepAndSize".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "coords".to_string(),
+                    field_type: "list,double".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators {
+                        size: Some(SizeConstraint::Exact(3)),
+                        ..Default::default()
+                    },
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "number[]".to_string(),
+                    relocate_tags: None,
+                    default_value: None,
+                    type_override: None,
+                    separator: Some("|".to_string()),
+                    map_separator: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // List should have both separator and size
+        assert!(
+            xml.contains(r#"type="(list#sep=|#size=3),double""#),
+            "@sep and @Size should combine. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_enum_with_tags() {
+        use crate::parser::{EnumInfo, EnumVariant};
+
+        let enum_info = EnumInfo {
+            name: "PieceAttributeType".to_string(),
+            alias: None,
+            comment: Some("属性类型".to_string()),
+            is_string_enum: true,
+            is_flags: false,
+            tags: Some("string".to_string()),
+            variants: vec![
+                EnumVariant {
+                    name: "Attack".to_string(),
+                    alias: None,
+                    value: "attack".to_string(),
+                    comment: None,
+                },
+                EnumVariant {
+                    name: "Defense".to_string(),
+                    alias: None,
+                    value: "defense".to_string(),
+                    comment: None,
+                },
+            ],
+            source_file: "test.ts".to_string(),
+            file_hash: "abc".to_string(),
+            output_path: None,
+            module_name: None,
+        };
+
+        let xml = generate_enum_xml(&[enum_info], "test");
+        // Enum should have tags attribute
+        assert!(
+            xml.contains(r#"<enum name="PieceAttributeType" tags="string" comment="属性类型">"#),
+            "@tags should add tags attribute to enum. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_container_with_default() {
+        let class = ClassInfo {
+            name: "ConfigWithContainerDefault".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![
+                FieldInfo {
+                    name: "items".to_string(),
+                    field_type: "list,string".to_string(),
+                    comment: None,
+                    alias: None,
+                    is_optional: false,
+                    validators: FieldValidators::default(),
+                    is_object_factory: false,
+                    factory_inner_type: None,
+                    is_constructor: false,
+                    constructor_inner_type: None,
+                    original_type: "string[]".to_string(),
+                    relocate_tags: None,
+                    default_value: Some("[]".to_string()),
+                    type_override: None,
+                    separator: None,
+                    map_separator: None,
+                },
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // Container should have default value at the end
+        assert!(
+            xml.contains(r#"type="list,string#default=[]""#),
+            "@default should add default value to container type. Got:\n{}",
+            xml
+        );
+    }
+
+    // Tests for [tables] config-based table generation
+
+    #[test]
+    fn test_table_from_config_map_mode() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "SkillConfig".to_string(),
+            comment: Some("技能配置".to_string()),
+            alias: None,
+            fields: vec![
+                make_field("id", "int", false),
+                make_field("name", "string", false),
+            ],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("skill".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry from config
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "skill.SkillConfig".to_string(),
+            TableConfig::Simple("../datas/skill".to_string()),
+        );
+        let table_registry = TableRegistry::from_config(&tables_config);
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "skill");
+
+        // Should generate table element from [tables] config
+        assert!(
+            xml.contains(r#"<table name="SkillConfigTable" value="SkillConfig" index="id" input="../datas/skill" />"#),
+            "Should generate table element from [tables] config. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_table_from_config_one_mode() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "RollSkillConfig".to_string(),
+            comment: Some("抽技能配置".to_string()),
+            alias: None,
+            fields: vec![make_field("selectionCount", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("rollSkill".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry from config with mode="one"
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "rollSkill.RollSkillConfig".to_string(),
+            TableConfig::Full {
+                input: "../datas/roll-skill".to_string(),
+                name: None,
+                mode: Some("one".to_string()),
+                index: None,
+            },
+        );
+        let table_registry = TableRegistry::from_config(&tables_config);
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "rollSkill");
+
+        // Should generate table element with one mode (no index)
+        assert!(
+            xml.contains(r#"<table name="RollSkillConfigTable" value="RollSkillConfig" mode="one" input="../datas/roll-skill" />"#),
+            "Should generate table element with mode=one. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_table_from_config_with_chinese_path() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "AllianceAttackInfo".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("Id", "string", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("battle".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with Chinese path
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "battle.AllianceAttackInfo".to_string(),
+            TableConfig::Full {
+                input: "../datas/battle/我方普通攻击配置表.xlsx".to_string(),
+                name: None,
+                mode: None,
+                index: Some("Id".to_string()),
+            },
+        );
+        let table_registry = TableRegistry::from_config(&tables_config);
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "battle");
+
+        // Should handle Chinese characters in path
+        assert!(
+            xml.contains(r#"input="../datas/battle/我方普通攻击配置表.xlsx""#),
+            "Should handle Chinese characters in input path. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_no_table_without_config() {
+        let class = ClassInfo {
+            name: "NoTableConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("value", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: None,
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let xml = generate_xml(&[class]);
+        // Should NOT generate table element without [tables] config
+        assert!(
+            !xml.contains("<table"),
+            "Should not generate table element without [tables] config. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_table_with_custom_name() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "BattleData".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("battleId", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("battle".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with custom table name
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "battle.BattleData".to_string(),
+            TableConfig::Full {
+                input: "../datas/battle".to_string(),
+                name: Some("TbBattle".to_string()),
+                mode: None,
+                index: Some("battleId".to_string()),
+            },
+        );
+        let table_registry = TableRegistry::from_config(&tables_config);
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "battle");
+
+        // Should use custom table name
+        assert!(
+            xml.contains(r#"<table name="TbBattle" value="BattleData" index="battleId" input="../datas/battle" />"#),
+            "Should use custom table name from config. Got:\n{}",
             xml
         );
     }

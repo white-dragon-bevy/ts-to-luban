@@ -36,6 +36,14 @@ pub struct FieldInfo {
     pub original_type: String,
     /// Relocate tags for virtual fields (e.g., "relocateTo=TScalingStat,prefix=_main")
     pub relocate_tags: Option<String>,
+    /// Default value from @default JSDoc tag (e.g., @default="0")
+    pub default_value: Option<String>,
+    /// Type override from @type JSDoc tag (e.g., @type="int" to override number -> int)
+    pub type_override: Option<String>,
+    /// List separator from @sep JSDoc tag (e.g., @sep="|")
+    pub separator: Option<String>,
+    /// Map separator from @mapsep JSDoc tag (e.g., @mapsep=",|")
+    pub map_separator: Option<String>,
 }
 
 impl Default for FieldInfo {
@@ -53,6 +61,10 @@ impl Default for FieldInfo {
             constructor_inner_type: None,
             original_type: String::new(),
             relocate_tags: None,
+            default_value: None,
+            type_override: None,
+            separator: None,
+            map_separator: None,
         }
     }
 }

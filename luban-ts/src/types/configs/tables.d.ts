@@ -1,22 +1,22 @@
-import { Item, Skill, Monster, Player, Difficulty, Team } from "../../__examples__/all-validators";
-import { CharacterConfig } from "../../__examples__/constructor-type";
-import { LeaderboardEntry, GameConfig, ServerSettings } from "../../__examples__/table-modes";
 import { Weapon, Armor } from "../../__examples__/items";
+import { LeaderboardEntry, GameConfig, ServerSettings } from "../../__examples__/table-modes";
+import { CharacterConfig } from "../../__examples__/constructor-type";
+import { Item, Skill, Monster, Player, Difficulty, Team } from "../../__examples__/all-validators";
 import { WeaponConfig, ArmorConfig } from "../../__examples__/virtual-fields";
 
 export interface AllTables {
+    ArmorConfigTable: Map<number, ArmorConfig>;
+    ArmorTable: Map<number, Armor>;
+    CharacterConfigTable: Map<number, CharacterConfig>;
+    DifficultyTable: Map<number, Difficulty>;
+    GameConfigTable: GameConfig;
     ItemTable: Map<number, Item>;
-    SkillTable: Map<number, Skill>;
+    LeaderboardEntryTable: LeaderboardEntry[];
     MonsterTable: Map<number, Monster>;
     PlayerTable: Map<number, Player>;
-    DifficultyTable: Map<number, Difficulty>;
-    TeamTable: Map<number, Team>;
-    WeaponTable: Map<number, Weapon>;
-    ArmorTable: Map<number, Armor>;
-    LeaderboardEntryTable: LeaderboardEntry[];
-    GameConfigTable: GameConfig;
     ServerSettingsTable: ServerSettings;
-    CharacterConfigTable: Map<number, CharacterConfig>;
+    SkillTable: Map<number, Skill>;
+    TeamTable: Map<number, Team>;
     WeaponConfigTable: Map<number, WeaponConfig>;
-    ArmorConfigTable: Map<number, ArmorConfig>;
+    WeaponTable: Map<number, Weapon>;
 }

@@ -1,0 +1,18 @@
+<module name="weapon" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 武器配置 -->
+    <bean name="WeaponConfig" parent="resource.ResourceConfig" comment="武器配置">
+        <var name="attributes" type="map,enums.AttributeType,float" comment="武器属性"/>
+        <var name="levels" type="list,WeaponLevelConfig" comment="武器升级配置列表"/>
+    </bean>
+
+    <!-- 武器升级配置 -->
+    <bean name="WeaponLevelConfig" comment="武器升级配置">
+        <var name="level" type="int" comment="武器等级"/>
+        <var name="stoneRequired" type="int" comment="升到所需矿石"/>
+        <var name="upgradeAttributes" type="map,enums.AttributeType,float" comment="升级属性增加百分比(替换)"/>
+    </bean>
+
+    <table name="WeaponConfigTable" value="WeaponConfig" input="../datas/weapon" />
+
+</module>

@@ -1,0 +1,14 @@
+<module name="rollSkill" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 抽技能配置 -->
+    <bean name="RollSkillConfig" comment="抽技能配置">
+        <var name="selectionCount" type="int#default=3" comment="每次选择的技能数量"/>
+        <var name="characterMultiplier" type="float#default=5" comment="角色相关技能权重乘数"/>
+        <var name="synergyMultiplier" type="float#default=4" comment="协同技能权重乘数"/>
+        <var name="dailyLevelWeights" type="list,(list,int)" comment="每日等级权重配置列表"/>
+        <var name="levelPrices" type="list,int" comment="各等级技能的价格"/>
+    </bean>
+
+    <table name="RollSkillConfigTable" mode="one" value="RollSkillConfig" input="../datas/roll-skill" />
+
+</module>

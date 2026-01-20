@@ -1,0 +1,42 @@
+<module name="lottery" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 抽卡消耗 -->
+    <bean name="CostConfig" comment="抽卡消耗">
+        <var name="single" type="(map#sep=,|),string,int" comment="单抽: currencyId-&gt;数量"/>
+        <var name="multi10" type="(map#sep=,|),string,int" comment="十连(未填则=单抽*10)"/>
+    </bean>
+
+    <!-- 奖池 -->
+    <bean name="LotteryPoolConfig" parent="resource.ResourceConfig" comment="奖池">
+        <var name="openAt" type="long#default=0" comment="开始时间"/>
+        <var name="closeAt" type="long#default=0" comment="结束时间"/>
+        <var name="prizes" type="list,PrizeConfig" comment="奖品列表"/>
+        <var name="pity" type="PityRule" comment="保底"/>
+        <var name="cost" type="CostConfig" comment="消耗"/>
+        <var name="allowSkip" type="bool#default=true" comment="是否允许跳过演出"/>
+    </bean>
+
+    <!-- 保底（硬+软） -->
+    <bean name="PityRule" comment="保底（硬+软）">
+        <var name="maxDraws" type="int#default=0" comment="硬保底最大抽数"/>
+        <var name="softStart" type="int#default=0" comment="软保底起始抽数"/>
+        <var name="softStepRate" type="float#default=0" comment="软保底每超出1抽提高倍率增量"/>
+        <var name="targetFilter" type="string?" comment="目标筛选规则"/>
+        <var name="resetOnHit" type="bool#default=true" comment="命中目标后是否重置保底计数"/>
+    </bean>
+
+    <!-- 奖品 -->
+    <bean name="PrizeConfig" comment="奖品">
+        <var name="prizeId" type="int" comment="奖品ID(唯一)"/>
+        <var name="type" type="enums.ItemType" comment="类型"/>
+        <var name="itemId" type="string" comment="关联资源Key"/>
+        <var name="amount" type="int#default=1" comment="数量(默认1)"/>
+        <var name="quality" type="enums.QualityType#default=1" comment="品质(默认1)"/>
+        <var name="weight" type="int" comment="基础权重"/>
+        <var name="tags" type="(list#sep=|),string" comment="标签(如:SSR|LIMITED)"/>
+        <var name="show" type="bool#default=false" comment="是否前端展示"/>
+    </bean>
+
+    <table name="LotteryPoolConfigTable" value="LotteryPoolConfig" input="../datas/lottery" />
+
+</module>

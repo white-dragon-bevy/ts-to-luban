@@ -281,7 +281,112 @@ const item = new ItemClass();
 - `@ignore` 标签 → 不导出该类/接口/枚举
 - `@flags="true"` → 位标志枚举
 
-### 6. 配置选项
+### 6. JSDoc 修饰符（适用于 interface，无需装饰器）
+
+当使用 interface 而非 class 时（如 roblox-ts），可以使用 JSDoc 修饰符替代装饰器。
+
+#### 字段级别修饰符
+
+| 修饰符 | 说明 | 生成的 Luban 语法 |
+|--------|------|------------------|
+| `@type="int"` | 类型覆盖 | `type="int"` (覆盖 number → double) |
+| `@type="float"` | 类型覆盖 | `type="float"` |
+| `@type="long"` | 类型覆盖 | `type="long"` |
+| `@default="value"` | 默认值 | `type="float#default=0"` |
+| `@sep="\|"` | 列表分隔符 | `type="(list#sep=\|),string"` |
+| `@mapsep=",\|"` | Map 分隔符 | `type="(map#sep=,\|),string,int"` |
+
+**字段示例**：
+```typescript
+export interface BaseAttributes {
+    /**
+     * 生命值
+     * @type="float"
+     * @default="0"
+     */
+    readonly health: number;
+
+    /**
+     * 技能标签列表
+     * @sep="|"
+     */
+    readonly tags: string[];
+
+    /**
+     * 技能等级配置
+     * @mapsep=",|"
+     */
+    readonly skillLevels: Map<string, number>;
+}
+```
+
+生成：
+```xml
+<bean name="BaseAttributes">
+    <var name="health" type="float#default=0" comment="生命值"/>
+    <var name="tags" type="(list#sep=|),string" comment="技能标签列表"/>
+    <var name="skillLevels" type="(map#sep=,|),string,double" comment="技能等级配置"/>
+</bean>
+```
+
+#### 类/接口级别修饰符
+
+| 修饰符 | 说明 | 生成的 Luban 语法 |
+|--------|------|------------------|
+| `@table="mode,index"` | 表配置 | `<table mode="map" index="id">` |
+| `@input="path"` | 表输入路径 | `input="../datas/xxx"` |
+
+**接口示例**：
+```typescript
+/**
+ * 技能配置
+ * @table="map,id"
+ * @input="../datas/skill"
+ */
+export interface SkillConfig extends ResourceConfig {
+    /** 技能最大等级 @type="int" @default="5" */
+    readonly maxLevel: number;
+}
+```
+
+生成：
+```xml
+<bean name="SkillConfig" parent="resource.ResourceConfig" comment="技能配置">
+    <var name="maxLevel" type="int#default=5" comment="技能最大等级"/>
+</bean>
+
+<table name="SkillConfigTable" value="SkillConfig" mode="map" index="id" input="../datas/skill"/>
+```
+
+#### 枚举级别修饰符
+
+| 修饰符 | 说明 | 生成的 Luban 语法 |
+|--------|------|------------------|
+| `@tags="string"` | 字符串枚举标记 | `<enum tags="string">` |
+
+**枚举示例**：
+```typescript
+/**
+ * 属性类型
+ * @tags="string"
+ */
+export enum PieceAttributeType {
+    /** 生命值 */
+    Health = "health",
+    /** 攻击力 */
+    Attack = "attack",
+}
+```
+
+生成：
+```xml
+<enum name="PieceAttributeType" tags="string" comment="属性类型">
+    <var name="Health" value="health" comment="生命值"/>
+    <var name="Attack" value="attack" comment="攻击力"/>
+</enum>
+```
+
+### 7. 配置选项
 
 ```toml
 [project]
@@ -335,14 +440,14 @@ Vector3 = "Vector3"
 Entity = "long"
 ```
 
-### 7. Source 类型
+### 8. Source 类型
 - `file`: 单个文件
 - `files`: 多个文件（共享 output_path 和 module_name）
 - `directory`: 目录扫描
 - `glob`: Glob 模式匹配（支持 `*`, `**`, `?`, `[abc]`）
 - `registration`: 注册文件（未完全实现）
 
-### 8. Enum 导出
+### 9. Enum 导出
 
 **字符串枚举**（新版鲁班自动检测）：
 ```typescript
@@ -403,7 +508,7 @@ export enum UnitFlag {
 - 字符串枚举 value 从 1 自动递增
 - 数值枚举使用原始数值
 
-### 9. Bean 类型枚举导出
+### 10. Bean 类型枚举导出
 
 将所有 bean 按 parent 分组导出为枚举：
 
@@ -435,6 +540,64 @@ pub struct FieldValidators {
 }
 ```
 
+### FieldInfo
+```rust
+pub struct FieldInfo {
+    pub name: String,
+    pub field_type: String,
+    pub comment: Option<String>,
+    pub alias: Option<String>,
+    pub is_optional: bool,
+    pub validators: FieldValidators,
+    pub is_object_factory: bool,
+    pub factory_inner_type: Option<String>,
+    pub original_type: String,
+    // JSDoc 修饰符
+    pub default_value: Option<String>,   // @default
+    pub type_override: Option<String>,   // @type
+    pub separator: Option<String>,       // @sep
+    pub map_separator: Option<String>,   // @mapsep
+}
+```
+
+### ClassInfo
+```rust
+pub struct ClassInfo {
+    pub name: String,
+    pub comment: Option<String>,
+    pub alias: Option<String>,
+    pub fields: Vec<FieldInfo>,
+    pub extends: Option<String>,
+    pub source_file: String,
+    pub is_interface: bool,
+    pub module_name: Option<String>,
+    pub luban_table: Option<LubanTableConfig>,
+    // JSDoc 修饰符
+    pub table_config: Option<JsDocTableConfig>,  // @table
+    pub input_path: Option<String>,              // @input
+}
+
+pub struct JsDocTableConfig {
+    pub mode: String,           // map | list | one
+    pub index: Option<String>,  // 索引字段
+}
+```
+
+### EnumInfo
+```rust
+pub struct EnumInfo {
+    pub name: String,
+    pub alias: Option<String>,
+    pub comment: Option<String>,
+    pub is_string_enum: bool,
+    pub is_flags: bool,                  // @flags="true"
+    pub tags: Option<String>,            // @tags="string"
+    pub variants: Vec<EnumVariant>,
+    pub source_file: String,
+    pub module_name: Option<String>,
+}
+```
+
 ### LubanTableConfig
 ```rust
 pub struct LubanTableConfig {
@@ -442,20 +605,6 @@ pub struct LubanTableConfig {
     pub index: String,          // 索引字段
     pub group: Option<String>,  // 分组
     pub tags: Option<String>,   // 标签
-}
-```
-
-### FieldInfo
-```rust
-pub struct FieldInfo {
-    pub name: String,
-    pub field_type: String,
-    pub comment: Option<String>,
-    pub is_optional: bool,
-    pub validators: FieldValidators,
-    pub is_object_factory: bool,
-    pub factory_inner_type: Option<String>,
-    pub original_type: String,
 }
 ```
 

@@ -1,4 +1,24 @@
+use crate::config::TableConfig;
 use std::collections::HashMap;
+
+/// Resolved table configuration with all defaults applied
+#[derive(Debug, Clone)]
+pub struct ResolvedTableConfig {
+    /// Full bean name with module prefix (e.g., "role.RoleConfig")
+    pub bean: String,
+    /// Table name (e.g., "RoleConfigTable" or custom name)
+    pub name: String,
+    /// Input path (e.g., "../datas/role")
+    pub input: String,
+    /// Table mode: "map" | "list" | "one" | "singleton"
+    pub mode: String,
+    /// Index field (e.g., "id")
+    pub index: String,
+    /// Module name (e.g., "role")
+    pub module: String,
+    /// Class name without module prefix (e.g., "RoleConfig")
+    pub class_name: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct TableEntry {
@@ -13,8 +33,10 @@ pub struct TableEntry {
 
 #[derive(Debug, Default)]
 pub struct TableRegistry {
-    /// Map from class name to TableEntry
+    /// Map from class name (without module) to TableEntry (for @Ref resolution)
     entries: HashMap<String, TableEntry>,
+    /// Map from full bean name (module.ClassName) to ResolvedTableConfig
+    tables: HashMap<String, ResolvedTableConfig>,
 }
 
 impl TableRegistry {
@@ -22,7 +44,64 @@ impl TableRegistry {
         Self::default()
     }
 
-    /// Register a @LubanTable class
+    /// Build registry from [tables] config
+    pub fn from_config(tables_config: &HashMap<String, TableConfig>) -> Self {
+        let mut registry = Self::new();
+
+        for (full_name, config) in tables_config {
+            // Parse "module.ClassName" format
+            let (module, class_name) = if let Some(dot_pos) = full_name.rfind('.') {
+                (
+                    full_name[..dot_pos].to_string(),
+                    full_name[dot_pos + 1..].to_string(),
+                )
+            } else {
+                // No module prefix
+                (String::new(), full_name.clone())
+            };
+
+            // Build table name: custom name or default "{ClassName}Table"
+            let table_name = config
+                .name()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}Table", class_name));
+
+            // Build full table reference for @Ref
+            let full_table_ref = if module.is_empty() {
+                table_name.clone()
+            } else {
+                format!("{}.{}", module, table_name)
+            };
+
+            let resolved = ResolvedTableConfig {
+                bean: full_name.clone(),
+                name: table_name.clone(),
+                input: config.input().to_string(),
+                mode: config.mode().to_string(),
+                index: config.index().to_string(),
+                module: module.clone(),
+                class_name: class_name.clone(),
+            };
+
+            // Register in tables map (by full name)
+            registry.tables.insert(full_name.clone(), resolved);
+
+            // Register in entries map (by class name only, for @Ref resolution)
+            registry.entries.insert(
+                class_name.clone(),
+                TableEntry {
+                    namespace: module,
+                    bean_name: class_name,
+                    table_name,
+                    full_table_ref,
+                },
+            );
+        }
+
+        registry
+    }
+
+    /// Register a @LubanTable class (legacy method for backward compatibility)
     /// class_name: the TypeScript class name (e.g., "Item")
     /// namespace: the module name (e.g., "examples")
     pub fn register(&mut self, class_name: &str, namespace: &str) {
@@ -46,12 +125,173 @@ impl TableRegistry {
         );
     }
 
+    /// Get table entry by class name (for @Ref resolution)
     pub fn get(&self, class_name: &str) -> Option<&TableEntry> {
         self.entries.get(class_name)
+    }
+
+    /// Get resolved table config by full bean name (module.ClassName)
+    pub fn get_table(&self, full_name: &str) -> Option<&ResolvedTableConfig> {
+        self.tables.get(full_name)
+    }
+
+    /// Get resolved table config by class name only (searches all modules)
+    pub fn get_table_by_class(&self, class_name: &str) -> Option<&ResolvedTableConfig> {
+        // First try exact match with full name
+        if let Some(config) = self.tables.get(class_name) {
+            return Some(config);
+        }
+
+        // Then search by class name
+        self.tables
+            .values()
+            .find(|config| config.class_name == class_name)
+    }
+
+    /// Get all registered tables
+    pub fn all_tables(&self) -> impl Iterator<Item = &ResolvedTableConfig> {
+        self.tables.values()
+    }
+
+    /// Check if a class is registered as a table
+    pub fn is_table(&self, class_name: &str) -> bool {
+        self.entries.contains_key(class_name)
+    }
+
+    /// Check if a full bean name is registered as a table
+    pub fn has_table(&self, full_name: &str) -> bool {
+        self.tables.contains_key(full_name)
     }
 
     /// Resolve @Ref(ClassName) to full table reference (e.g., "examples.ItemTable")
     pub fn resolve_ref(&self, class_name: &str) -> Option<String> {
         self.get(class_name).map(|e| e.full_table_ref.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_config_simple() {
+        let mut config = HashMap::new();
+        config.insert(
+            "role.RoleConfig".to_string(),
+            TableConfig::Simple("../datas/role".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        // Check table lookup by full name
+        let table = registry.get_table("role.RoleConfig").unwrap();
+        assert_eq!(table.bean, "role.RoleConfig");
+        assert_eq!(table.name, "RoleConfigTable");
+        assert_eq!(table.input, "../datas/role");
+        assert_eq!(table.mode, "map");
+        assert_eq!(table.index, "id");
+        assert_eq!(table.module, "role");
+        assert_eq!(table.class_name, "RoleConfig");
+
+        // Check @Ref resolution
+        let ref_target = registry.resolve_ref("RoleConfig").unwrap();
+        assert_eq!(ref_target, "role.RoleConfigTable");
+    }
+
+    #[test]
+    fn test_from_config_full() {
+        let mut config = HashMap::new();
+        config.insert(
+            "battle.BattleData".to_string(),
+            TableConfig::Full {
+                input: "../datas/battle".to_string(),
+                name: Some("TbBattle".to_string()),
+                mode: Some("one".to_string()),
+                index: Some("battleId".to_string()),
+            },
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        let table = registry.get_table("battle.BattleData").unwrap();
+        assert_eq!(table.name, "TbBattle");
+        assert_eq!(table.mode, "one");
+        assert_eq!(table.index, "battleId");
+
+        // Check @Ref resolution with custom table name
+        let ref_target = registry.resolve_ref("BattleData").unwrap();
+        assert_eq!(ref_target, "battle.TbBattle");
+    }
+
+    #[test]
+    fn test_from_config_no_module() {
+        let mut config = HashMap::new();
+        config.insert(
+            "GlobalConfig".to_string(),
+            TableConfig::Simple("../datas/global".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        let table = registry.get_table("GlobalConfig").unwrap();
+        assert_eq!(table.module, "");
+        assert_eq!(table.class_name, "GlobalConfig");
+        assert_eq!(table.name, "GlobalConfigTable");
+
+        // @Ref without module prefix
+        let ref_target = registry.resolve_ref("GlobalConfig").unwrap();
+        assert_eq!(ref_target, "GlobalConfigTable");
+    }
+
+    #[test]
+    fn test_get_table_by_class() {
+        let mut config = HashMap::new();
+        config.insert(
+            "role.RoleConfig".to_string(),
+            TableConfig::Simple("../datas/role".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        // Can find by class name only
+        let table = registry.get_table_by_class("RoleConfig").unwrap();
+        assert_eq!(table.bean, "role.RoleConfig");
+    }
+
+    #[test]
+    fn test_is_table() {
+        let mut config = HashMap::new();
+        config.insert(
+            "role.RoleConfig".to_string(),
+            TableConfig::Simple("../datas/role".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        assert!(registry.is_table("RoleConfig"));
+        assert!(!registry.is_table("NonExistent"));
+    }
+
+    #[test]
+    fn test_has_table() {
+        let mut config = HashMap::new();
+        config.insert(
+            "role.RoleConfig".to_string(),
+            TableConfig::Simple("../datas/role".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        assert!(registry.has_table("role.RoleConfig"));
+        assert!(!registry.has_table("role.NonExistent"));
+    }
+
+    #[test]
+    fn test_legacy_register() {
+        let mut registry = TableRegistry::new();
+        registry.register("Item", "examples");
+
+        let ref_target = registry.resolve_ref("Item").unwrap();
+        assert_eq!(ref_target, "examples.ItemTable");
     }
 }

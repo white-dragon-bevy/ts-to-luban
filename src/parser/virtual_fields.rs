@@ -1,5 +1,5 @@
 use crate::config::{FieldValidators, SizeConstraint, VirtualField, VirtualFieldsConfig};
-use crate::parser::class_info::ClassInfo;
+use crate::parser::class_info::{ClassInfo, ImportMap};
 use crate::parser::field_info::FieldInfo;
 use std::collections::HashMap;
 
@@ -53,6 +53,10 @@ fn convert_virtual_field(field_config: &VirtualField) -> FieldInfo {
         original_type: field_config.field_type.clone(),
         // Store relocate tags for XML generation
         relocate_tags: tags,
+        default_value: None,
+        type_override: None,
+        separator: None,
+        map_separator: None,
     }
 }
 
@@ -178,6 +182,9 @@ mod tests {
                 module_name: None,
                 type_params: HashMap::new(),
                 luban_table: None,
+                table_config: None,
+                input_path: None,
+                imports: ImportMap::new(),
             },
         );
 
@@ -232,6 +239,9 @@ mod tests {
                 module_name: None,
                 type_params: HashMap::new(),
                 luban_table: None,
+                table_config: None,
+                input_path: None,
+                imports: ImportMap::new(),
             },
         );
 

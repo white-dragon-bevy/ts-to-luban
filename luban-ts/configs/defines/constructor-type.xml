@@ -1,26 +1,28 @@
-<?xml version="1.0" encoding="utf-8"?>
 <module name="constructor" comment="自动生成的 ts class Bean 定义">
 
-    <bean name="BaseTrigger" parent="TsClass" comment="Base trigger class">
-        <var name="id" type="double"/>
-        <var name="priority" type="double"/>
-    </bean>
-
+    <!-- Character configuration with constructor type field -->
     <bean name="CharacterConfig" parent="TsClass" comment="Character configuration with constructor type field">
         <var name="id" type="double"/>
         <var name="name" type="string"/>
         <var name="triggerType" type="string#constructor=BaseTrigger" comment="In Excel, store class name like &quot;DamageTrigger&quot; or &quot;HealTrigger&quot;"/>
     </bean>
 
+    <!-- Base trigger class -->
+    <bean name="BaseTrigger" parent="TsClass" comment="Base trigger class">
+        <var name="id" type="double"/>
+        <var name="priority" type="double"/>
+    </bean>
+
+    <!-- Damage trigger implementation -->
     <bean name="DamageTrigger" parent="BaseTrigger" comment="Damage trigger implementation">
         <var name="damage" type="double"/>
     </bean>
 
+    <!-- Heal trigger implementation -->
     <bean name="HealTrigger" parent="BaseTrigger" comment="Heal trigger implementation">
         <var name="healAmount" type="double"/>
     </bean>
 
-    <!-- 数据表配置 -->
-    <table name="CharacterConfigTable" value="CharacterConfig" mode="map" index="id" input="*@../datas/character-config/"/>
+    <table name="CharacterConfigTable" value="CharacterConfig" index="id" input="../datas/character-config" />
 
 </module>

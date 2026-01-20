@@ -26,6 +26,8 @@ pub struct EnumInfo {
     pub is_string_enum: bool,
     /// Whether this is a flags enum (@flags="true")
     pub is_flags: bool,
+    /// Custom tags from @tags JSDoc tag (e.g., @tags="string")
+    pub tags: Option<String>,
     /// Enum variants
     pub variants: Vec<EnumVariant>,
     /// Source file path

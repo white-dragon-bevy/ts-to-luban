@@ -1,0 +1,9 @@
+<module name="trait" comment="自动生成的 ts class Bean 定义">
+
+    <!-- 特质配置 -->
+    <bean name="TraitConfig" parent="resource.ResourceConfig" comment="特质配置">
+    </bean>
+
+    <table name="TraitConfigTable" value="TraitConfig" input="../datas/trait" />
+
+</module>
