@@ -167,6 +167,19 @@ impl TableRegistry {
     pub fn resolve_ref(&self, class_name: &str) -> Option<String> {
         self.get(class_name).map(|e| e.full_table_ref.clone())
     }
+
+    /// Validate that all configured tables have corresponding beans
+    /// Returns a list of missing bean names (tables configured but beans not found)
+    pub fn validate_beans_exist<'a>(
+        &self,
+        existing_beans: &'a std::collections::HashSet<String>,
+    ) -> Vec<&str> {
+        self.tables
+            .keys()
+            .filter(|full_name| !existing_beans.contains(*full_name))
+            .map(|s| s.as_str())
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -293,5 +306,79 @@ mod tests {
 
         let ref_target = registry.resolve_ref("Item").unwrap();
         assert_eq!(ref_target, "examples.ItemTable");
+    }
+
+    #[test]
+    fn test_validate_beans_exist_all_present() {
+        let mut config = HashMap::new();
+        config.insert(
+            "role.RoleConfig".to_string(),
+            TableConfig::Simple("../datas/role".to_string()),
+        );
+        config.insert(
+            "battle.BattleData".to_string(),
+            TableConfig::Simple("../datas/battle".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        let mut existing_beans = std::collections::HashSet::new();
+        existing_beans.insert("role.RoleConfig".to_string());
+        existing_beans.insert("battle.BattleData".to_string());
+
+        let missing = registry.validate_beans_exist(&existing_beans);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn test_validate_beans_exist_some_missing() {
+        let mut config = HashMap::new();
+        config.insert(
+            "role.RoleConfig".to_string(),
+            TableConfig::Simple("../datas/role".to_string()),
+        );
+        config.insert(
+            "battle.BattleData".to_string(),
+            TableConfig::Simple("../datas/battle".to_string()),
+        );
+        config.insert(
+            "UnitFlagsPreset".to_string(),
+            TableConfig::Simple("../datas/unit-flags".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        let mut existing_beans = std::collections::HashSet::new();
+        existing_beans.insert("role.RoleConfig".to_string());
+        // battle.BattleData and UnitFlagsPreset are missing
+
+        let missing = registry.validate_beans_exist(&existing_beans);
+        assert_eq!(missing.len(), 2);
+        assert!(missing.contains(&"battle.BattleData"));
+        assert!(missing.contains(&"UnitFlagsPreset"));
+    }
+
+    #[test]
+    fn test_validate_beans_exist_no_module() {
+        let mut config = HashMap::new();
+        config.insert(
+            "GlobalConfig".to_string(),
+            TableConfig::Simple("../datas/global".to_string()),
+        );
+
+        let registry = TableRegistry::from_config(&config);
+
+        // Bean exists without module prefix
+        let mut existing_beans = std::collections::HashSet::new();
+        existing_beans.insert("GlobalConfig".to_string());
+
+        let missing = registry.validate_beans_exist(&existing_beans);
+        assert!(missing.is_empty());
+
+        // Bean does not exist
+        let empty_beans: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let missing = registry.validate_beans_exist(&empty_beans);
+        assert_eq!(missing.len(), 1);
+        assert!(missing.contains(&"GlobalConfig"));
     }
 }

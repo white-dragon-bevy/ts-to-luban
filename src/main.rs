@@ -271,6 +271,30 @@ fn run_generation(
         );
     }
 
+    // Validate that all configured tables have corresponding beans
+    if !config.tables.is_empty() {
+        let existing_beans: std::collections::HashSet<String> = all_classes
+            .iter()
+            .map(|class| {
+                if let Some(module) = &class.module_name {
+                    format!("{}.{}", module, class.name)
+                } else {
+                    class.name.clone()
+                }
+            })
+            .collect();
+
+        let missing_beans = table_registry.validate_beans_exist(&existing_beans);
+        if !missing_beans.is_empty() {
+            eprintln!("\nError: The following tables are configured but their beans do not exist:");
+            for bean in &missing_beans {
+                eprintln!("  - {}", bean);
+            }
+            eprintln!("\nPlease check your [tables] configuration and ensure the corresponding TypeScript classes/interfaces exist.");
+            std::process::exit(1);
+        }
+    }
+
     // Filter by cache
     println!("\n[3/4] Checking cache...");
     let mut unchanged = 0;
