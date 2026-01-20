@@ -22,9 +22,6 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@white-dragon-bevy'
 
-      - name: Install luban-ts dependencies
-        run: cd luban-ts && npm install
-
       - name: Update version in package.json
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -34,9 +31,6 @@ jobs:
             VERSION="${VERSION#v}"
           fi
           # Update root package.json
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-          # Update luban-ts/package.json
-          cd luban-ts
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Download release binaries

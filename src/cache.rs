@@ -5,7 +5,7 @@ use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Cache {
-    pub version: u32,
+    pub version: String,
     pub generated_at: DateTime<Utc>,
     pub entries: HashMap<String, CacheEntry>,
 }
@@ -19,7 +19,7 @@ pub struct CacheEntry {
 impl Cache {
     pub fn new() -> Self {
         Self {
-            version: 1,
+            version: env!("CARGO_PKG_VERSION").to_string(),
             generated_at: Utc::now(),
             entries: HashMap::new(),
         }
@@ -30,7 +30,14 @@ impl Cache {
             return Ok(Self::new());
         }
         let content = std::fs::read_to_string(path)?;
-        Self::from_json(&content)
+        let cache = Self::from_json(&content)?;
+
+        // Invalidate cache if version mismatch
+        if cache.version != env!("CARGO_PKG_VERSION") {
+            return Ok(Self::new());
+        }
+
+        Ok(cache)
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {

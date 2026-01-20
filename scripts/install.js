@@ -87,6 +87,10 @@ async function main() {
     }
 
     console.log('luban-gen installed successfully!');
+
+    // Write version file
+    const versionFile = path.join(binDir, '.version');
+    fs.writeFileSync(versionFile, VERSION);
   } catch (err) {
     console.error(`Failed to download luban-gen: ${err.message}`);
     console.error('You may need to build from source: cargo build --release');
