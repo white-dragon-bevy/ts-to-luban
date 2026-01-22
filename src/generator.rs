@@ -464,9 +464,14 @@ impl<'a> XmlGenerator<'a> {
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
-        // Build tags: ObjectFactory + custom_tags
+        // Build tags: RefOverride (auto for @ref/@refKey) + ObjectFactory + custom_tags
         let tags_attr = {
             let mut tags = Vec::new();
+
+            // Auto-add RefOverride=true when @ref or @refKey is present
+            if field.validators.has_ref || field.validators.has_ref_key {
+                tags.push("RefOverride=true");
+            }
 
             if field.is_object_factory {
                 tags.push("ObjectFactory=true");
