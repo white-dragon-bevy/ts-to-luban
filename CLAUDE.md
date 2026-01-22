@@ -15,10 +15,10 @@
 cargo build --release
 
 # 运行（强制重新生成）
-cargo run -- -c luban-ts/luban.config.toml -f
+cargo run -- -c examples/luban.config.toml -f
 
 # Watch 模式
-cargo run -- -c luban-ts/luban.config.toml -w
+cargo run -- -c examples/luban.config.toml -w
 
 # 测试
 cargo test
@@ -45,11 +45,12 @@ src/
 ├── cache.rs             # 增量缓存
 └── scanner.rs           # 文件扫描
 
-luban-ts/                # 示例项目 (roblox-ts)
+luban-ts/                # 示例项目 (roblox-ts), 目录名为 examples/
 ├── src/
 │   ├── index.ts         # 装饰器定义
 │   ├── __examples__/    # 示例配置类
 │   └── __tests__/       # 测试
+├── rokit.toml           # Rokit 工具配置 (rojo)
 └── luban.config.toml
 ```
 
@@ -139,13 +140,15 @@ cargo test                    # RED → GREEN → REFACTOR
 cargo build --release
 
 # 2. 验证生成
-cargo run -- -c luban-ts/luban.config.toml -f
+cargo run -- -c examples/luban.config.toml -f
 
-# 3. luban-ts 层
-cd luban-ts
+# 3. examples 层 (roblox-ts)
+cd examples
+rokit install                 # 安装 rojo 工具
+npm install                   # 安装依赖
 npm run config:build          # 生成代码
 npm run build                 # 编译
-npm test                      # 测试
+npm test                      # 测试 (需要 Roblox Cloud 环境)
 ```
 
 **检查点**：
