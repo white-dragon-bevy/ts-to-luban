@@ -1,14 +1,9 @@
 /**
  * Luban 装饰器完整示例
  * 演示所有验证器的生成
- *
- * 命名规则：
- * - TypeScript 类名: Item (bean 名称)
- * - 生成的 table 名称: ItemTable
- * - @Ref(Item) 生成: #ref=examples.ItemTable
  */
 
-import { LubanTable, Range, Required, Size, Set, Index, Ref } from "../index";
+import { Range, Required, Size, Set, Index } from "../index";
 
 // ============================================
 // 基础表定义
@@ -18,7 +13,6 @@ import { LubanTable, Range, Required, Size, Set, Index, Ref } from "../index";
  * 道具配置
  * @alias:道具
  */
-@LubanTable({ mode: "map", index: "id" })
 export class Item {
     /** @alias="物品ID" */
     public id: number;
@@ -35,14 +29,12 @@ export class Item {
 
     @Range(1, 999)
     public stackLimit: number;
-
 }
 
 /**
  * 技能配置
  * @alias:技能
  */
-@LubanTable({ mode: "map", index: "id" })
 export class Skill {
     public id: number;
 
@@ -61,8 +53,7 @@ export class Skill {
  * 掉落物品
  */
 export class DropItem {
-    /** 引用道具表 -> #ref=examples.ItemTable */
-    @Ref(Item)
+    /** 道具ID */
     public itemId: number;
 
     @Range(1, 100)
@@ -76,7 +67,6 @@ export class DropItem {
  * 怪物配置
  * @alias:怪物
  */
-@LubanTable({ mode: "map", index: "id" })
 export class Monster {
     public id: number;
 
@@ -90,11 +80,9 @@ export class Monster {
     public hp: number;
 
     /**
-     * 技能列表 - 最多4个技能，引用技能表
-     * -> (list#size=[1,4]),double#ref=examples.SkillTable
+     * 技能列表 - 最多4个技能
      */
     @Size(1, 4)
-    @Ref(Skill)
     public skills: number[];
 
     /**
@@ -111,7 +99,6 @@ export class Monster {
 /**
  * 玩家信息
  */
-@LubanTable({ mode: "map", index: "id" })
 export class Player {
     public id: number;
 
@@ -128,7 +115,6 @@ export class Player {
 /**
  * 难度配置
  */
-@LubanTable({ mode: "map", index: "id" })
 export class Difficulty {
     public id: number;
 
@@ -141,7 +127,6 @@ export class Difficulty {
 /**
  * 队伍配置
  */
-@LubanTable({ mode: "map", index: "id" })
 export class Team {
     public id: number;
 

@@ -50,4 +50,12 @@ export type Constructor<T> = new (...args: any[]) => T;
 export type Writable<T> = {
     -readonly [P in keyof T]: T[P];
 };
+
+
+/**
+ * 引用
+ */
+export type Ref<T> = T
+
+
 export {};

@@ -22,8 +22,8 @@
         <var name="tickRate" type="double"/>
     </bean>
 
-    <table name="LeaderboardEntryTable" value="LeaderboardEntry" mode="list" input="../datas/leaderboard" />
-    <table name="GameConfigTable" value="GameConfig" mode="one" input="../datas/game-config" />
-    <table name="ServerSettingsTable" value="ServerSettings" mode="singleton" input="../datas/server-settings" />
+    <table name="LeaderboardEntryTable" value="LeaderboardEntry" mode="list" input="*@../datas/leaderboardentry/" />
+    <table name="GameConfigTable" value="GameConfig" mode="one" input="../datas/game-config/config.json" />
+    <table name="ServerSettingsTable" value="ServerSettings" mode="singleton" input="../datas/server-settings/settings.json" />
 
 </module>

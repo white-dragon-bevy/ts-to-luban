@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -233,37 +235,12 @@ fn run_generation(
         all_enums.len()
     );
 
-    // Build class map for virtual field injection
-    let all_classes = if !config.virtual_fields.is_empty() {
-        use parser::inject_virtual_fields;
-        use std::collections::HashMap;
-
-        println!(
-            "\n  Injecting {} virtual field config(s)...",
-            config.virtual_fields.len()
-        );
-
-        let mut class_map: HashMap<String, parser::ClassInfo> = HashMap::new();
-        for class in &all_classes {
-            class_map.insert(class.name.clone(), class.clone());
-        }
-
-        inject_virtual_fields(&mut class_map, &config.virtual_fields)?;
-
-        // Rebuild all_classes with injected fields
-        let mut final_classes_with_virtual: Vec<parser::ClassInfo> = Vec::new();
-        for class in &all_classes {
-            if let Some(updated_class) = class_map.get(&class.name) {
-                final_classes_with_virtual.push(updated_class.clone());
-            }
-        }
-        final_classes_with_virtual
-    } else {
-        all_classes
-    };
-
     // Build table registry from [tables] config
-    let table_registry = TableRegistry::from_config(&config.tables);
+    let mut table_registry = TableRegistry::from_config(&config.tables);
+    
+    // Set index types based on parsed class information
+    table_registry.set_index_types(&all_classes, &type_mapper);
+    
     if cli.verbose {
         println!(
             "  Registered {} tables from [tables] config",

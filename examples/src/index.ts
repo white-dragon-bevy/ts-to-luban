@@ -19,8 +19,6 @@ export interface LubanTableConfig {
   tags?: string;
 }
 
-
-
 /**
  * 鲁班表装饰器
  * @param config 
@@ -30,40 +28,94 @@ export function LubanTable(config: LubanTableConfig): ClassDecorator {
   return () => {};
 }
 
-
-
 // === 字段装饰器 ===
 
-export function Ref<T>(target: new (...args: never[]) => T): PropertyDecorator {
-  return () => {};
-}
-
+/**
+ * 范围验证器
+ * @example
+ * @Range(1, 100)
+ * level: number;  // -> double#range=[1,100]
+ */
 export function Range(min: number, max: number): PropertyDecorator {
   return () => {};
 }
 
+/**
+ * 必填验证器
+ * @example
+ * @Required()
+ * name: string;  // -> string!
+ */
 export function Required(): PropertyDecorator {
   return () => {};
 }
 
+/**
+ * 大小验证器
+ * @example
+ * @Size(4)
+ * items: number[];  // -> (list#size=4),double
+ * 
+ * @Size(2, 5)
+ * items: number[];  // -> (list#size=[2,5]),double
+ */
 export function Size(size: number): PropertyDecorator;
 export function Size(min: number, max: number): PropertyDecorator;
 export function Size(_minOrSize: number, _max?: number): PropertyDecorator {
   return () => {};
 }
 
+/**
+ * 集合验证器
+ * @example
+ * @Set(1, 2, 3)
+ * type: number;  // -> double#set=1,2,3
+ */
 export function Set(..._values: (number | string)[]): PropertyDecorator {
   return () => {};
 }
 
+/**
+ * 索引验证器
+ * @example
+ * @Index("id")
+ * items: Item[];  // -> (list#index=id),Item
+ */
 export function Index(field: string): PropertyDecorator {
   return () => {};
 }
 
+/**
+ * 名义类型标记
+ */
 export function Nominal(): PropertyDecorator {
   return () => {};
 }
 
+// === JSDoc 注释说明 ===
+// 
+// @ref - 引用验证器，用于 scalar、list 元素或 map value
+// 字段类型必须是配置在 [tables] 中的 class/interface
+// @example
+// /**
+//  * @ref
+//  */
+// item: Item;  // -> indexType#ref=module.ItemTable
+//
+// @refKey - Map Key 引用验证器，仅用于 Map 的 key
+// @example
+// /**
+//  * @refKey
+//  * @ref
+//  */
+// itemToSkill: Map<Item, Skill>;  // key 引用 Item 表，value 引用 Skill 表
+//
+// @tags="key=value,..." - 自定义标签
+// @example
+// /**
+//  * @tags="RefOverride=true"
+//  */
+// itemId: number;  // -> double tags="RefOverride=true"
 
 // 鲁班类型标记字段
 export type $type<T extends object> = T & {$type: string};

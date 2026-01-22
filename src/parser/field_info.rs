@@ -6,7 +6,12 @@ pub enum SizeConstraint {
 
 #[derive(Debug, Clone, Default)]
 pub struct FieldValidators {
-    pub ref_target: Option<String>,
+    /// @ref JSDoc tag - applies to scalar, list element, or map value
+    /// Auto-discovers target table from field type
+    pub has_ref: bool,
+    /// @refKey JSDoc tag - applies to map key only
+    /// Auto-discovers target table from map key type
+    pub has_ref_key: bool,
     pub range: Option<(f64, f64)>,
     pub required: bool,
     pub size: Option<SizeConstraint>,
@@ -34,8 +39,6 @@ pub struct FieldInfo {
     pub constructor_inner_type: Option<String>,
     /// Original TypeScript type (before mapping)
     pub original_type: String,
-    /// Relocate tags for virtual fields (e.g., "relocateTo=TScalingStat,prefix=_main")
-    pub relocate_tags: Option<String>,
     /// Default value from @default JSDoc tag (e.g., @default="0")
     pub default_value: Option<String>,
     /// Type override from @type JSDoc tag (e.g., @type="int" to override number -> int)
@@ -44,6 +47,8 @@ pub struct FieldInfo {
     pub separator: Option<String>,
     /// Map separator from @mapsep JSDoc tag (e.g., @mapsep=",|")
     pub map_separator: Option<String>,
+    /// Custom tags from @tags JSDoc tag (e.g., @tags="RefOverride=true,foo=bar")
+    pub custom_tags: Option<String>,
 }
 
 impl Default for FieldInfo {
@@ -60,11 +65,11 @@ impl Default for FieldInfo {
             is_constructor: false,
             constructor_inner_type: None,
             original_type: String::new(),
-            relocate_tags: None,
             default_value: None,
             type_override: None,
             separator: None,
             map_separator: None,
+            custom_tags: None,
         }
     }
 }

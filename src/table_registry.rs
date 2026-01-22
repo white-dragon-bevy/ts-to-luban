@@ -14,6 +14,8 @@ pub struct ResolvedTableConfig {
     pub mode: String,
     /// Index field (e.g., "id")
     pub index: String,
+    /// Index field type (e.g., "int", "string") - used by @Ref/@RefKey
+    pub index_type: Option<String>,
     /// Module name (e.g., "role")
     pub module: String,
     /// Class name without module prefix (e.g., "RoleConfig")
@@ -29,6 +31,8 @@ pub struct TableEntry {
     pub table_name: String,
     /// Full table reference for @Ref (namespace.TableName)
     pub full_table_ref: String,
+    /// Index field type (e.g., "int", "string") - used by @Ref/@RefKey
+    pub index_type: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -79,6 +83,7 @@ impl TableRegistry {
                 input: config.input().to_string(),
                 mode: config.mode().to_string(),
                 index: config.index().to_string(),
+                index_type: None, // Will be set later by set_index_types
                 module: module.clone(),
                 class_name: class_name.clone(),
             };
@@ -94,6 +99,7 @@ impl TableRegistry {
                     bean_name: class_name,
                     table_name,
                     full_table_ref,
+                    index_type: None, // Will be set later by set_index_types
                 },
             );
         }
@@ -121,8 +127,44 @@ impl TableRegistry {
                 bean_name,
                 table_name,
                 full_table_ref,
+                index_type: None,
             },
         );
+    }
+
+    /// Set index types for all registered tables based on parsed class information
+    /// This should be called after parsing all TypeScript files
+    pub fn set_index_types(&mut self, classes: &[crate::parser::ClassInfo], type_mapper: &crate::type_mapper::TypeMapper) {
+        use std::collections::HashMap as StdHashMap;
+        
+        // Build a map from class name to its fields
+        let class_fields: StdHashMap<&str, &[crate::parser::FieldInfo]> = classes
+            .iter()
+            .map(|c| (c.name.as_str(), c.fields.as_slice()))
+            .collect();
+
+        // Update index_type for each table
+        for (_full_name, config) in &mut self.tables {
+            let class_name = &config.class_name;
+            if let Some(fields) = class_fields.get(class_name.as_str()) {
+                // Find the index field
+                if let Some(field) = fields.iter().find(|f| f.name == config.index) {
+                    // Map the TypeScript type to Luban type
+                    let mapped_type = type_mapper.map_full_type(&field.field_type);
+                    config.index_type = Some(mapped_type.clone());
+                    
+                    // Also update the entry
+                    if let Some(entry) = self.entries.get_mut(class_name) {
+                        entry.index_type = Some(mapped_type);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get index type for a class (for @Ref resolution)
+    pub fn get_index_type(&self, class_name: &str) -> Option<&str> {
+        self.entries.get(class_name).and_then(|e| e.index_type.as_deref())
     }
 
     /// Get table entry by class name (for @Ref resolution)

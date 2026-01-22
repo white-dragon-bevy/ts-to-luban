@@ -2,13 +2,11 @@ pub mod class_info;
 pub mod decorator;
 pub mod enum_info;
 pub mod field_info;
-pub mod virtual_fields;
 
-pub use class_info::{ClassInfo, ImportMap, JsDocTableConfig, LubanTableConfig};
+pub use class_info::{ClassInfo, ImportMap, LubanTableConfig};
 pub use decorator::{parse_decorator, DecoratorArg};
 pub use enum_info::{EnumInfo, EnumVariant};
 pub use field_info::{FieldInfo, FieldValidators, SizeConstraint};
-pub use virtual_fields::inject_virtual_fields;
 
 use anyhow::Result;
 use std::collections::HashMap;
@@ -843,11 +841,11 @@ impl TsParser {
             is_constructor: type_info.is_constructor,
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
-            relocate_tags: None,
             default_value: None,
             type_override: None,
             separator: None,
             map_separator: None,
+            custom_tags: None,
         })
     }
 
@@ -912,15 +910,22 @@ impl TsParser {
         let type_override = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "type"));
         let separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "sep"));
         let map_separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "mapsep"));
+        let custom_tags = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "tags"));
+
+        // Parse @ref and @refKey JSDoc tags
+        let has_ref = raw_comment.as_ref().map(|c| has_jsdoc_ref_tag(c)).unwrap_or(false);
+        let has_ref_key = raw_comment.as_ref().map(|c| has_jsdoc_ref_key_tag(c)).unwrap_or(false);
 
         // Get cleaned comment (without @alias and other JSDoc modifier lines)
         let comment = raw_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref", "refKey"]))
             .filter(|c| !c.is_empty());
 
         // Parse field decorators from ClassProp
-        let validators = parse_field_decorators(&prop.decorators);
+        let mut validators = parse_field_decorators(&prop.decorators);
+        validators.has_ref = has_ref;
+        validators.has_ref_key = has_ref_key;
 
         Some(FieldInfo {
             name,
@@ -934,11 +939,11 @@ impl TsParser {
             is_constructor: type_info.is_constructor,
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
-            relocate_tags: None,
             default_value,
             type_override,
             separator,
             map_separator,
+            custom_tags,
         })
     }
 
@@ -986,12 +991,24 @@ impl TsParser {
         let type_override = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "type"));
         let separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "sep"));
         let map_separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "mapsep"));
+        let custom_tags = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "tags"));
+
+        // Parse @ref and @refKey JSDoc tags
+        let has_ref = raw_comment.as_ref().map(|c| has_jsdoc_ref_tag(c)).unwrap_or(false);
+        let has_ref_key = raw_comment.as_ref().map(|c| has_jsdoc_ref_key_tag(c)).unwrap_or(false);
 
         // Get cleaned comment (without @alias and other JSDoc modifier lines)
         let comment = raw_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref", "refKey"]))
             .filter(|c| !c.is_empty());
+
+        // Build validators with JSDoc tags
+        let validators = FieldValidators {
+            has_ref,
+            has_ref_key,
+            ..Default::default()
+        };
 
         Some(FieldInfo {
             name,
@@ -999,17 +1016,17 @@ impl TsParser {
             comment,
             alias: field_alias,
             is_optional: prop.optional,
-            validators: FieldValidators::default(),
+            validators,
             is_object_factory: type_info.is_object_factory,
             factory_inner_type: type_info.factory_inner_type,
             is_constructor: type_info.is_constructor,
             constructor_inner_type: type_info.constructor_inner_type,
             original_type: type_info.original_type,
-            relocate_tags: None,
             default_value,
             type_override,
             separator,
             map_separator,
+            custom_tags,
         })
     }
 
@@ -1391,6 +1408,28 @@ fn has_jsdoc_ignore_tag(text: &str) -> bool {
     false
 }
 
+/// Check if a JSDoc comment contains @ref tag (standalone, no value needed)
+fn has_jsdoc_ref_tag(text: &str) -> bool {
+    for line in text.lines() {
+        let line = line.trim().trim_start_matches('*').trim();
+        if line == "@ref" || line.starts_with("@ref ") || line.starts_with("@ref\t") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if a JSDoc comment contains @refKey tag (standalone, no value needed)
+fn has_jsdoc_ref_key_tag(text: &str) -> bool {
+    for line in text.lines() {
+        let line = line.trim().trim_start_matches('*').trim();
+        if line == "@refKey" || line.starts_with("@refKey ") || line.starts_with("@refKey\t") {
+            return true;
+        }
+    }
+    false
+}
+
 /// Parse a JSDoc tag value like @flags="true", @alias="移动", or @alias:Foo
 /// Supports two formats:
 /// - @tag="value" - returns the value inside quotes
@@ -1452,17 +1491,13 @@ fn parse_jsdoc_description_excluding_tags(text: &str, exclude_tags: &[&str]) -> 
 }
 
 /// Parse field decorators and return FieldValidators
+/// Note: @Ref decorator is removed, use JSDoc @ref instead
 fn parse_field_decorators(decorators: &[Decorator]) -> FieldValidators {
     let mut validators = FieldValidators::default();
 
     for dec in decorators {
         if let Some(parsed) = parse_decorator(dec) {
             match parsed.name.as_str() {
-                "Ref" => {
-                    if let Some(DecoratorArg::Identifier(class_name)) = parsed.args.first() {
-                        validators.ref_target = Some(class_name.clone());
-                    }
-                }
                 "Range" => {
                     if parsed.args.len() >= 2 {
                         if let (Some(DecoratorArg::Number(min)), Some(DecoratorArg::Number(max))) =
@@ -2210,5 +2245,127 @@ export interface MonsterConfig {
         assert_eq!(class.fields[2].name, "hp");
         assert_eq!(class.fields[2].alias, None);
         assert_eq!(class.fields[2].comment, Some("普通字段".to_string()));
+    }
+
+    #[test]
+    fn test_parse_ref_jsdoc_tag() {
+        let ts_code = r#"
+export class DropConfig {
+    /**
+     * 引用物品表
+     * @ref
+     */
+    public item: Item;
+
+    /** @ref */
+    public skill: Skill;
+
+    /** 普通字段 */
+    public count: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 3);
+
+        // item field with @ref
+        assert_eq!(class.fields[0].name, "item");
+        assert!(class.fields[0].validators.has_ref);
+        assert!(!class.fields[0].validators.has_ref_key);
+
+        // skill field with @ref
+        assert_eq!(class.fields[1].name, "skill");
+        assert!(class.fields[1].validators.has_ref);
+
+        // count field without @ref
+        assert_eq!(class.fields[2].name, "count");
+        assert!(!class.fields[2].validators.has_ref);
+    }
+
+    #[test]
+    fn test_parse_ref_key_jsdoc_tag() {
+        let ts_code = r#"
+export class ItemSkillMap {
+    /**
+     * Map with key ref
+     * @refKey
+     */
+    public itemSkills: Map<Item, number>;
+
+    /**
+     * Map with both key and value ref
+     * @refKey
+     * @ref
+     */
+    public itemToSkill: Map<Item, Skill>;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 2);
+
+        // itemSkills with @refKey only
+        assert_eq!(class.fields[0].name, "itemSkills");
+        assert!(class.fields[0].validators.has_ref_key);
+        assert!(!class.fields[0].validators.has_ref);
+
+        // itemToSkill with both @refKey and @ref
+        assert_eq!(class.fields[1].name, "itemToSkill");
+        assert!(class.fields[1].validators.has_ref_key);
+        assert!(class.fields[1].validators.has_ref);
+    }
+
+    #[test]
+    fn test_parse_tags_jsdoc_tag() {
+        let ts_code = r#"
+export class ConfigWithTags {
+    /**
+     * Field with custom tags
+     * @tags="RefOverride=true"
+     */
+    public itemId: number;
+
+    /**
+     * @tags="a=1,b=2,c=aa"
+     */
+    public data: string;
+
+    /** No tags */
+    public normal: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 3);
+
+        // itemId with @tags="RefOverride=true"
+        assert_eq!(class.fields[0].name, "itemId");
+        assert_eq!(class.fields[0].custom_tags, Some("RefOverride=true".to_string()));
+
+        // data with @tags="a=1,b=2,c=aa"
+        assert_eq!(class.fields[1].name, "data");
+        assert_eq!(class.fields[1].custom_tags, Some("a=1,b=2,c=aa".to_string()));
+
+        // normal without tags
+        assert_eq!(class.fields[2].name, "normal");
+        assert_eq!(class.fields[2].custom_tags, None);
     }
 }

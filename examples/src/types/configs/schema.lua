@@ -21,26 +21,19 @@ end
 
 local enums =
 {
+    ['discriminated_union.ShapeType'] = {   Circle='circle',  Rectangle='rectangle',  };
 }
 
 local tables =
 {
     { name='CharacterConfigTable', file='constructor_characterconfigtable', mode='map', index='id', value_type='constructor.CharacterConfig' },
-    { name='ItemTable', file='examples_itemtable', mode='map', index='id', value_type='examples.Item' },
-    { name='SkillTable', file='examples_skilltable', mode='map', index='id', value_type='examples.Skill' },
-    { name='MonsterTable', file='examples_monstertable', mode='map', index='id', value_type='examples.Monster' },
-    { name='PlayerTable', file='examples_playertable', mode='map', index='id', value_type='examples.Player' },
-    { name='DifficultyTable', file='examples_difficultytable', mode='map', index='id', value_type='examples.Difficulty' },
-    { name='TeamTable', file='examples_teamtable', mode='map', index='id', value_type='examples.Team' },
     { name='PoisonEffectTable', file='implements_parent_poisoneffecttable', mode='map', index='id', value_type='implements_parent.PoisonEffect' },
     { name='BuffEffectTable', file='implements_parent_buffeffecttable', mode='map', index='id', value_type='implements_parent.BuffEffect' },
     { name='WeaponTable', file='items_weapontable', mode='map', index='id', value_type='items.Weapon' },
     { name='ArmorTable', file='items_armortable', mode='map', index='id', value_type='items.Armor' },
-    { name='LeaderboardEntryTable', file='modes_leaderboardentrytable', mode='list', index='rank', value_type='modes.LeaderboardEntry' },
+    { name='LeaderboardEntryTable', file='modes_leaderboardentrytable', mode='list', index='', value_type='modes.LeaderboardEntry' },
     { name='GameConfigTable', file='modes_gameconfigtable', mode='one', value_type='modes.GameConfig'},
     { name='ServerSettingsTable', file='modes_serversettingstable', mode='one', value_type='modes.ServerSettings'},
-    { name='WeaponConfigTable', file='virtual_fields_weaponconfigtable', mode='map', index='id', value_type='virtual_fields.WeaponConfig' },
-    { name='ArmorConfigTable', file='virtual_fields_armorconfigtable', mode='map', index='id', value_type='virtual_fields.ArmorConfig' },
 }
 
 local function InitTypes(methods)
@@ -51,8 +44,44 @@ local function InitTypes(methods)
 
     local beans = {}
     do
+        local class = methods.getClass('discriminated_union.ShapeInfo')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local __type__ = bs["$type"]
+if __type__ == "discriminated_union.CircleShape" then
+                return beans["discriminated_union.CircleShape"]._deserialize(bs)
+elseif __type__ == "discriminated_union.RectangleShape" then
+                return beans["discriminated_union.RectangleShape"]._deserialize(bs)
+            else
+                error("Unknown type for discriminated_union.ShapeInfo: " .. tostring(__type__))
+            end
+        end
+        beans['discriminated_union.ShapeInfo'] = class
+    end
+    do
+        local class = methods.getClass('discriminated_union.CircleShape')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local o = table.clone(bs)
+            setmetatable(o, class)
+            return o
+        end
+        beans['discriminated_union.CircleShape'] = class
+    end
+    do
+        local class = methods.getClass('discriminated_union.RectangleShape')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local o = table.clone(bs)
+            setmetatable(o, class)
+            return o
+        end
+        beans['discriminated_union.RectangleShape'] = class
+    end
+    do
         local class = methods.getClass('field_visibility.ITestInterface')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -62,6 +91,7 @@ local function InitTypes(methods)
     do
         local class = methods.getClass('implements_parent.IEntity')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
 if __type__ == "implements_parent.HealEffect" then
                 return beans["implements_parent.HealEffect"]._deserialize(bs)
@@ -78,6 +108,7 @@ elseif __type__ == "implements_parent.FireEffect" then
     do
         local class = methods.getClass('implements_parent.FireEffect')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -87,6 +118,7 @@ elseif __type__ == "implements_parent.FireEffect" then
     do
         local class = methods.getClass('implements_parent.IEffect')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
 if __type__ == "implements_parent.HealEffect" then
                 return beans["implements_parent.HealEffect"]._deserialize(bs)
@@ -101,6 +133,7 @@ elseif __type__ == "implements_parent.BuffEffect" then
     do
         local class = methods.getClass('implements_parent.HealEffect')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -110,6 +143,7 @@ elseif __type__ == "implements_parent.BuffEffect" then
     do
         local class = methods.getClass('implements_parent.PoisonEffect')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
 if __type__ == "implements_parent.BuffEffect" then
                 return beans["implements_parent.BuffEffect"]._deserialize(bs)
@@ -122,6 +156,7 @@ if __type__ == "implements_parent.BuffEffect" then
     do
         local class = methods.getClass('implements_parent.BuffEffect')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -131,13 +166,22 @@ if __type__ == "implements_parent.BuffEffect" then
     do
         local class = methods.getClass('TsClass')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
-if __type__ == "constructor.DamageTrigger" then
+if __type__ == "constructor.CharacterConfig" then
+                return beans["constructor.CharacterConfig"]._deserialize(bs)
+elseif __type__ == "constructor.DamageTrigger" then
                 return beans["constructor.DamageTrigger"]._deserialize(bs)
 elseif __type__ == "constructor.HealTrigger" then
                 return beans["constructor.HealTrigger"]._deserialize(bs)
-elseif __type__ == "constructor.CharacterConfig" then
-                return beans["constructor.CharacterConfig"]._deserialize(bs)
+elseif __type__ == "dollar_type.Hero" then
+                return beans["dollar_type.Hero"]._deserialize(bs)
+elseif __type__ == "dollar_type.Enemy" then
+                return beans["dollar_type.Enemy"]._deserialize(bs)
+elseif __type__ == "dollar_type.EntityConfig" then
+                return beans["dollar_type.EntityConfig"]._deserialize(bs)
+elseif __type__ == "dollar_type.ComplexConfig" then
+                return beans["dollar_type.ComplexConfig"]._deserialize(bs)
 elseif __type__ == "examples.Item" then
                 return beans["examples.Item"]._deserialize(bs)
 elseif __type__ == "examples.Skill" then
@@ -178,12 +222,6 @@ elseif __type__ == "modes.GameConfig" then
                 return beans["modes.GameConfig"]._deserialize(bs)
 elseif __type__ == "modes.ServerSettings" then
                 return beans["modes.ServerSettings"]._deserialize(bs)
-elseif __type__ == "virtual_fields.ScalingStat" then
-                return beans["virtual_fields.ScalingStat"]._deserialize(bs)
-elseif __type__ == "virtual_fields.WeaponConfig" then
-                return beans["virtual_fields.WeaponConfig"]._deserialize(bs)
-elseif __type__ == "virtual_fields.ArmorConfig" then
-                return beans["virtual_fields.ArmorConfig"]._deserialize(bs)
             else
                 error("Unknown type for TsClass: " .. tostring(__type__))
             end
@@ -193,6 +231,7 @@ elseif __type__ == "virtual_fields.ArmorConfig" then
     do
         local class = methods.getClass('constructor.BaseTrigger')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
 if __type__ == "constructor.DamageTrigger" then
                 return beans["constructor.DamageTrigger"]._deserialize(bs)
@@ -207,6 +246,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('constructor.DamageTrigger')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -216,6 +256,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('constructor.HealTrigger')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -225,6 +266,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('constructor.CharacterConfig')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             o.triggerType = methods.getClass(bs.triggerType)
             setmetatable(o, class)
@@ -233,8 +275,70 @@ elseif __type__ == "constructor.HealTrigger" then
         beans['constructor.CharacterConfig'] = class
     end
     do
+        local class = methods.getClass('dollar_type.BaseEntity')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local __type__ = bs["$type"]
+if __type__ == "dollar_type.Hero" then
+                return beans["dollar_type.Hero"]._deserialize(bs)
+elseif __type__ == "dollar_type.Enemy" then
+                return beans["dollar_type.Enemy"]._deserialize(bs)
+            else
+                error("Unknown type for dollar_type.BaseEntity: " .. tostring(__type__))
+            end
+        end
+        beans['dollar_type.BaseEntity'] = class
+    end
+    do
+        local class = methods.getClass('dollar_type.Enemy')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local o = table.clone(bs)
+            setmetatable(o, class)
+            return o
+        end
+        beans['dollar_type.Enemy'] = class
+    end
+    do
+        local class = methods.getClass('dollar_type.Hero')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local o = table.clone(bs)
+            setmetatable(o, class)
+            return o
+        end
+        beans['dollar_type.Hero'] = class
+    end
+    do
+        local class = methods.getClass('dollar_type.ComplexConfig')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local o = table.clone(bs)
+            o.heroType = beans['dollar_type.Hero']._deserialize(bs.heroType)
+            o.enemyType = beans['dollar_type.Enemy']._deserialize(bs.enemyType)
+            o.mixedList = readList(bs.mixedList, beans['dollar_type.BaseEntity']._deserialize)
+            setmetatable(o, class)
+            return o
+        end
+        beans['dollar_type.ComplexConfig'] = class
+    end
+    do
+        local class = methods.getClass('dollar_type.EntityConfig')
+        class._deserialize = function(bs)
+            if not bs then return nil end
+            local o = table.clone(bs)
+            o.entityType = beans['dollar_type.BaseEntity']._deserialize(bs.entityType)
+            o.entities = readList(bs.entities, beans['dollar_type.BaseEntity']._deserialize)
+            o.entityMap = readMap(bs.entityMap, beans['dollar_type.BaseEntity']._deserialize)
+            setmetatable(o, class)
+            return o
+        end
+        beans['dollar_type.EntityConfig'] = class
+    end
+    do
         local class = methods.getClass('examples.Difficulty')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -244,6 +348,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('examples.DropItem')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -253,6 +358,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('examples.Item')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -262,6 +368,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('examples.Monster')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             o.drops = readList(bs.drops, beans['examples.DropItem']._deserialize)
             setmetatable(o, class)
@@ -272,6 +379,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('examples.Player')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -281,6 +389,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('examples.Skill')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -290,6 +399,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('examples.Team')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -299,6 +409,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('field_visibility.TestPrivateFields')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -308,6 +419,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('field_visibility.TestReadonlyFields')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -317,6 +429,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('implements_parent.MultiInterfaceEffect')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -326,6 +439,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('implements_parent.StandaloneClass')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -335,6 +449,7 @@ elseif __type__ == "constructor.HealTrigger" then
     do
         local class = methods.getClass('inheritance.BaseUnit')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
 if __type__ == "inheritance.PlayerUnit" then
                 return beans["inheritance.PlayerUnit"]._deserialize(bs)
@@ -349,6 +464,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('inheritance.CharacterUnit')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local __type__ = bs["$type"]
 if __type__ == "inheritance.PlayerUnit" then
                 return beans["inheritance.PlayerUnit"]._deserialize(bs)
@@ -363,6 +479,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('inheritance.NPCUnit')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -372,6 +489,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('inheritance.PlayerUnit')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -381,6 +499,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('inheritance.StandaloneUnit')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -390,6 +509,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('items.Armor')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -399,6 +519,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('items.EquipmentSet')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -408,6 +529,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('items.Weapon')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -417,6 +539,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('modes.GameConfig')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -426,6 +549,7 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('modes.LeaderboardEntry')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
@@ -435,41 +559,12 @@ elseif __type__ == "inheritance.NPCUnit" then
     do
         local class = methods.getClass('modes.ServerSettings')
         class._deserialize = function(bs)
+            if not bs then return nil end
             local o = table.clone(bs)
             setmetatable(o, class)
             return o
         end
         beans['modes.ServerSettings'] = class
-    end
-    do
-        local class = methods.getClass('virtual_fields.ArmorConfig')
-        class._deserialize = function(bs)
-            local o = table.clone(bs)
-            o.defenseStat = beans['virtual_fields.ScalingStat']._deserialize(bs.defenseStat)
-            setmetatable(o, class)
-            return o
-        end
-        beans['virtual_fields.ArmorConfig'] = class
-    end
-    do
-        local class = methods.getClass('virtual_fields.ScalingStat')
-        class._deserialize = function(bs)
-            local o = table.clone(bs)
-            setmetatable(o, class)
-            return o
-        end
-        beans['virtual_fields.ScalingStat'] = class
-    end
-    do
-        local class = methods.getClass('virtual_fields.WeaponConfig')
-        class._deserialize = function(bs)
-            local o = table.clone(bs)
-            o.mainStat = beans['virtual_fields.ScalingStat']._deserialize(bs.mainStat)
-            o.subStat = beans['virtual_fields.ScalingStat']._deserialize(bs.subStat)
-            setmetatable(o, class)
-            return o
-        end
-        beans['virtual_fields.WeaponConfig'] = class
     end
 
 

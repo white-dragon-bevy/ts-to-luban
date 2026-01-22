@@ -392,8 +392,9 @@ impl<'a> XmlGenerator<'a> {
                     .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
                     .unwrap_or_default();
 
+                // Build tags: custom_tags only
                 let tags_attr = field
-                    .relocate_tags
+                    .custom_tags
                     .as_ref()
                     .map(|t| format!(r#" tags="{}""#, escape_xml(t)))
                     .unwrap_or_default();
@@ -463,16 +464,16 @@ impl<'a> XmlGenerator<'a> {
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
-        // Build tags: relocate_tags + injectData for ObjectFactory
+        // Build tags: ObjectFactory + custom_tags
         let tags_attr = {
             let mut tags = Vec::new();
 
-            if let Some(relocate) = &field.relocate_tags {
-                tags.push(relocate.as_str());
-            }
-
             if field.is_object_factory {
                 tags.push("ObjectFactory=true");
+            }
+
+            if let Some(custom) = &field.custom_tags {
+                tags.push(custom.as_str());
             }
 
             if tags.is_empty() {
@@ -575,13 +576,26 @@ impl<'a> XmlGenerator<'a> {
 
     /// Apply validators to scalar types
     /// e.g., "int" -> "int!#ref=examples.TbItem#range=[1,100]"
+    /// For @ref fields, the type is replaced with the target table's index type
     fn apply_scalar_validators(
         &self,
         base_type: &str,
         validators: &FieldValidators,
         is_optional: bool,
     ) -> String {
-        let mut result = base_type.to_string();
+        // Handle @ref - replace type with target table's index type
+        let effective_type = if validators.has_ref {
+            let type_name = base_type.split('.').last().unwrap_or(base_type);
+            if let Some(table_config) = self.table_registry.get_table_by_class(type_name) {
+                table_config.index_type.clone().unwrap_or_else(|| base_type.to_string())
+            } else {
+                base_type.to_string()
+            }
+        } else {
+            base_type.to_string()
+        };
+
+        let mut result = effective_type;
 
         // Add optional marker
         if is_optional {
@@ -596,12 +610,17 @@ impl<'a> XmlGenerator<'a> {
         // Collect validator suffixes
         let mut validator_parts = Vec::new();
 
-        // Handle ref - resolve full namespace path using TableRegistry
-        if let Some(ref_target) = &validators.ref_target {
-            // Must resolve via registry, error if not found
-            let resolved = self.table_registry.resolve_ref(ref_target)
-                .unwrap_or_else(|| panic!("Error: @Ref target '{}' not found. Make sure '{}' is configured in [tables] section.", ref_target, ref_target));
-            validator_parts.push(format!("ref={}", resolved));
+        // Handle @ref - auto-discover target table from base_type
+        if validators.has_ref {
+            let type_name = base_type.split('.').last().unwrap_or(base_type);
+            if let Some(table_config) = self.table_registry.get_table_by_class(type_name) {
+                let table_ref = if table_config.module.is_empty() {
+                    table_config.name.clone()
+                } else {
+                    format!("{}.{}", table_config.module, table_config.name)
+                };
+                validator_parts.push(format!("ref={}", table_ref));
+            }
         }
 
         // Handle range
@@ -635,7 +654,19 @@ impl<'a> XmlGenerator<'a> {
         is_optional: bool,
         default_value: Option<&str>,
     ) -> String {
-        let mut result = base_type.to_string();
+        // Handle @ref - replace type with target table's index type
+        let effective_type = if validators.has_ref {
+            let type_name = base_type.split('.').last().unwrap_or(base_type);
+            if let Some(table_config) = self.table_registry.get_table_by_class(type_name) {
+                table_config.index_type.clone().unwrap_or_else(|| base_type.to_string())
+            } else {
+                base_type.to_string()
+            }
+        } else {
+            base_type.to_string()
+        };
+
+        let mut result = effective_type;
 
         // Add optional marker
         if is_optional {
@@ -650,12 +681,17 @@ impl<'a> XmlGenerator<'a> {
         // Collect validator suffixes
         let mut validator_parts = Vec::new();
 
-        // Handle ref - resolve full namespace path using TableRegistry
-        if let Some(ref_target) = &validators.ref_target {
-            // Must resolve via registry, error if not found
-            let resolved = self.table_registry.resolve_ref(ref_target)
-                .unwrap_or_else(|| panic!("Error: @Ref target '{}' not found. Make sure '{}' is configured in [tables] section.", ref_target, ref_target));
-            validator_parts.push(format!("ref={}", resolved));
+        // Handle @ref - auto-discover target table from base_type
+        if validators.has_ref {
+            let type_name = base_type.split('.').last().unwrap_or(base_type);
+            if let Some(table_config) = self.table_registry.get_table_by_class(type_name) {
+                let table_ref = if table_config.module.is_empty() {
+                    table_config.name.clone()
+                } else {
+                    format!("{}.{}", table_config.module, table_config.name)
+                };
+                validator_parts.push(format!("ref={}", table_ref));
+            }
         }
 
         // Handle range
@@ -740,7 +776,8 @@ impl<'a> XmlGenerator<'a> {
         // Build element type with its validators (ref, range, set, required)
         // Note: element_type is already resolved with module prefix
         let element_validators = FieldValidators {
-            ref_target: validators.ref_target.clone(),
+            has_ref: validators.has_ref,
+            has_ref_key: false,
             range: validators.range,
             required: validators.required,
             set_values: validators.set_values.clone(),
@@ -807,7 +844,8 @@ impl<'a> XmlGenerator<'a> {
 
         // Build element type with its validators (ref, range, set, required)
         let element_validators = FieldValidators {
-            ref_target: validators.ref_target.clone(),
+            has_ref: validators.has_ref,
+            has_ref_key: false,
             range: validators.range,
             required: validators.required,
             set_values: validators.set_values.clone(),
@@ -870,7 +908,8 @@ impl<'a> XmlGenerator<'a> {
         // Build element type with its validators (ref, range, set, required)
         // Note: element_type is already resolved with module prefix
         let element_validators = FieldValidators {
-            ref_target: validators.ref_target.clone(),
+            has_ref: validators.has_ref,
+            has_ref_key: false,
             range: validators.range,
             required: validators.required,
             set_values: validators.set_values.clone(),
@@ -1132,11 +1171,11 @@ mod tests {
             is_constructor: false,
             constructor_inner_type: None,
             original_type: field_type.to_string(),
-            relocate_tags: None,
             default_value: None,
             type_override: None,
             separator: None,
             map_separator: None,
+            custom_tags: None,
         }
     }
 
@@ -1158,11 +1197,11 @@ mod tests {
                 is_constructor: false,
                 constructor_inner_type: None,
                 original_type: "string".to_string(),
-                relocate_tags: None,
                 default_value: None,
                 type_override: None,
                 separator: None,
                 map_separator: None,
+                custom_tags: None,
             }],
             implements: vec![],
             extends: Some("BaseClass".to_string()),
@@ -1624,7 +1663,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "ObjectFactory<BaseTrigger>[]".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1642,7 +1681,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "string".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1676,56 +1715,6 @@ mod tests {
     }
 
     #[test]
-    fn test_object_factory_with_relocate_tags() {
-        let class = ClassInfo {
-            name: "WeaponConfig".to_string(),
-            comment: None,
-            alias: None,
-            fields: vec![FieldInfo {
-                name: "mainStat".to_string(),
-                field_type: "ScalingStat".to_string(),
-                comment: None,
-                alias: None,
-                is_optional: false,
-                validators: FieldValidators::default(),
-                is_object_factory: true,
-                factory_inner_type: Some("ScalingStat".to_string()),
-                is_constructor: false,
-                constructor_inner_type: None,
-                original_type: "ObjectFactory<ScalingStat>".to_string(),
-                relocate_tags: Some("relocateTo=TScalingStat,prefix=_main".to_string()),
-                default_value: None,
-                type_override: None,
-                separator: None,
-                map_separator: None,
-            }],
-            implements: vec![],
-            extends: None,
-            source_file: "test.ts".to_string(),
-            file_hash: "abc123".to_string(),
-            is_interface: false,
-            output_path: None,
-            module_name: None,
-            type_params: std::collections::HashMap::new(),
-            luban_table: None,
-            table_config: None,
-            input_path: None,
-            imports: ImportMap::new(),
-        };
-
-        let xml = generate_xml(&[class]);
-        // Both tags should be present, separated by comma
-        assert!(
-            xml.contains(
-                r#"tags="relocateTo=TScalingStat,prefix=_main,ObjectFactory=true""#
-            ) || xml.contains(
-                r#"tags="ObjectFactory=true,relocateTo=TScalingStat,prefix=_main""#
-            ),
-            "XML should combine relocate_tags and ObjectFactory tag"
-        );
-    }
-
-    #[test]
     fn test_skip_dollar_type_field() {
         let class = ClassInfo {
             name: "ShapeInfo".to_string(),
@@ -1744,7 +1733,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "ShapeType".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1762,7 +1751,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1882,7 +1871,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "string".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1900,7 +1889,7 @@ mod tests {
                     is_constructor: true,
                     constructor_inner_type: Some("ComponentCls".to_string()),
                     original_type: "Constructor<ComponentCls>".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1946,7 +1935,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "int".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1964,7 +1953,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "string".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -1982,7 +1971,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -2216,7 +2205,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: Some("int".to_string()),
                     separator: None,
@@ -2265,7 +2254,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: Some("0".to_string()),
                     type_override: None,
                     separator: None,
@@ -2314,7 +2303,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "number".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: Some("1".to_string()),
                     type_override: Some("int".to_string()),
                     separator: None,
@@ -2363,7 +2352,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "string[]".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: Some("|".to_string()),
@@ -2412,7 +2401,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "Map<string, int>".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: None,
@@ -2464,7 +2453,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "number[]".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: None,
                     type_override: None,
                     separator: Some("|".to_string()),
@@ -2553,7 +2542,7 @@ mod tests {
                     is_constructor: false,
                     constructor_inner_type: None,
                     original_type: "string[]".to_string(),
-                    relocate_tags: None,
+                    custom_tags: None,
                     default_value: Some("[]".to_string()),
                     type_override: None,
                     separator: None,

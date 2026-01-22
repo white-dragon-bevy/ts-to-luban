@@ -17,8 +17,8 @@
 
     <!-- 装备套装 -->
     <bean name="EquipmentSet" parent="TsClass" comment="装备套装">
-        <var name="weaponId" type="double#ref=items.WeaponTable"/>
-        <var name="armorId" type="double#ref=items.ArmorTable"/>
+        <var name="weaponId" type="double"/>
+        <var name="armorId" type="double"/>
     </bean>
 
     <table name="WeaponTable" value="Weapon" index="id" input="../datas/equipment/weapon" />

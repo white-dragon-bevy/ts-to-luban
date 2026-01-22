@@ -16,3 +16,4 @@ output/
 out/
 *.rbxl
 .cache.json
+.factory/

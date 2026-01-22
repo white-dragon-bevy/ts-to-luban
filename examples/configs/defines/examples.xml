@@ -15,13 +15,20 @@
         <var name="cooldown" type="double#range=[0,100]"/>
     </bean>
 
+    <!-- 掉落物品 -->
+    <bean name="DropItem" parent="TsClass" comment="掉落物品">
+        <var name="itemId" type="double" comment="道具ID"/>
+        <var name="count" type="double#range=[1,100]"/>
+        <var name="probability" type="double#range=[0,100]"/>
+    </bean>
+
     <!-- 怪物配置 -->
     <bean name="Monster" alias="怪物" parent="TsClass" comment="怪物配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
         <var name="level" type="double#range=[1,100]"/>
         <var name="hp" type="double#range=[1,999999]"/>
-        <var name="skills" type="(list#size=[1,4]),double#ref=examples.SkillTable" comment="技能列表 - 最多4个技能，引用技能表 -&gt; (list#size=[1,4]),double#ref=examples.SkillTable"/>
+        <var name="skills" type="(list#size=[1,4]),double" comment="技能列表 - 最多4个技能"/>
         <var name="drops" type="(list#index=itemId),DropItem" comment="掉落列表 - 按道具ID索引"/>
     </bean>
 
@@ -46,19 +53,5 @@
         <var name="members" type="(list#size=3),double" comment="固定3人"/>
         <var name="substitutes" type="(list#size=[0,2]),double" comment="0-2人替补"/>
     </bean>
-
-    <!-- 掉落物品 -->
-    <bean name="DropItem" parent="TsClass" comment="掉落物品">
-        <var name="itemId" type="double#ref=examples.ItemTable" comment="引用道具表 -&gt; #ref=examples.ItemTable"/>
-        <var name="count" type="double#range=[1,100]"/>
-        <var name="probability" type="double#range=[0,100]"/>
-    </bean>
-
-    <table name="ItemTable" value="Item" index="id" input="../datas/item" />
-    <table name="SkillTable" value="Skill" index="id" input="../datas/skill" />
-    <table name="MonsterTable" value="Monster" index="id" input="../datas/monster" />
-    <table name="PlayerTable" value="Player" index="id" input="../datas/player" />
-    <table name="DifficultyTable" value="Difficulty" index="id" input="../datas/difficulty" />
-    <table name="TeamTable" value="Team" index="id" input="../datas/team" />
 
 </module>

@@ -11,9 +11,9 @@
     "build": "rbxtsc --type game",
     "test": "npx test-cloud-testez --roots ReplicatedStorage/TS",
     "watch": "rbxtsc -w --type game",
-    "ts-luban": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml",
-    "ts-luban:force": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml -f",
-    "ts-luban:watch": "cd .. && .\\target\\release\\luban-gen.exe -c luban-ts/luban.config.toml -w",
+    "ts-luban": "cd .. && .\\target\\release\\luban-gen.exe -c examples/luban.config.toml",
+    "ts-luban:force": "cd .. && .\\target\\release\\luban-gen.exe -c examples/luban.config.toml -f",
+    "ts-luban:watch": "cd .. && .\\target\\release\\luban-gen.exe -c examples/luban.config.toml -w",
     "config:build": "npx luban -t all -c lua-bin -d roblox-ts-json --conf configs/luban.conf -x outputCodeDir=src/types/configs -x outputDataDir=configs/jsonConfigs -x compact=1 && npm run ts-luban:force"
   },
   "devDependencies": {

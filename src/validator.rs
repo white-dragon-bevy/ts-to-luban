@@ -2,6 +2,7 @@ use crate::parser::field_info::{FieldValidators, SizeConstraint};
 use crate::table_registry::TableRegistry;
 
 pub struct ValidatorGenerator<'a> {
+    #[allow(dead_code)]
     registry: &'a TableRegistry,
 }
 
@@ -11,22 +12,14 @@ impl<'a> ValidatorGenerator<'a> {
     }
 
     /// Generate Luban type string with validators
-    /// e.g., "double#range=[1,100]" or "int!#ref=item.TbItem"
+    /// e.g., "double#range=[1,100]" or "int!"
+    /// Note: @ref auto-discovery is handled at a higher level
     pub fn generate_type(&self, base_type: &str, validators: &FieldValidators) -> String {
         let mut result = base_type.to_string();
 
         // Handle required (!)
         if validators.required {
             result.push('!');
-        }
-
-        // Handle ref
-        if let Some(ref_target) = &validators.ref_target {
-            if let Some(full_name) = self.registry.resolve_ref(ref_target) {
-                result.push_str(&format!("#ref={}", full_name));
-            } else {
-                eprintln!("Warning: Could not resolve ref target: {}", ref_target);
-            }
         }
 
         // Handle range

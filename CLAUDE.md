@@ -76,7 +76,6 @@ luban-ts/                # 示例项目 (roblox-ts), 目录名为 examples/
 **字段装饰器**：
 | 装饰器 | 生成 |
 |--------|------|
-| `@Ref(TbItem)` | `type="double#ref=item.TbItem"` |
 | `@Range(1, 100)` | `type="double#range=[1,100]"` |
 | `@Required()` | `type="string!"` |
 | `@Size(4)` / `@Size(2, 5)` | `type="(list#size=4),double"` |
@@ -84,13 +83,42 @@ luban-ts/                # 示例项目 (roblox-ts), 目录名为 examples/
 | `@Index("id")` | `type="(list#index=id),Foo"` |
 | `@Nominal()` | `nominal="true"` |
 
-### JSDoc 修饰符（interface 专用）
+### JSDoc 修饰符
 
-**字段级别**：`@type="int"`, `@default="0"`, `@sep="|"`, `@mapsep=",|"`
+**字段级别**：
+- `@type="int"` - 类型覆盖
+- `@default="0"` - 默认值
+- `@sep="|"` - 列表分隔符
+- `@mapsep=",|"` - Map 分隔符
+- `@ref` - 引用验证器（自动发现目标表）
+- `@refKey` - Map Key 引用验证器（仅用于 Map）
+- `@tags="key=value,..."` - 自定义标签
 
 **类/接口级别**：`@table="map,id"`, `@input="path"`
 
 **枚举级别**：`@tags="string"`, `@flags="true"`, `@alias:别名`
+
+### 引用验证器 (@ref/@refKey)
+
+使用 JSDoc 注释标记引用字段，字段类型必须是配置在 `[tables]` 中的 class/interface：
+
+```typescript
+/**
+ * @ref
+ */
+item: Item;  // -> indexType#ref=module.ItemTable
+
+/**
+ * @refKey
+ * @ref
+ */
+itemToSkill: Map<Item, Skill>;  // key 引用 Item 表，value 引用 Skill 表
+
+/**
+ * @tags="RefOverride=true"
+ */
+itemId: number;  // -> double tags="RefOverride=true"
+```
 
 ### 父类解析
 
@@ -101,7 +129,8 @@ luban-ts/                # 示例项目 (roblox-ts), 目录名为 examples/
 ```rust
 // 字段验证器
 pub struct FieldValidators {
-    pub ref_target: Option<String>,
+    pub has_ref: bool,           // @ref JSDoc tag
+    pub has_ref_key: bool,       // @refKey JSDoc tag
     pub range: Option<(f64, f64)>,
     pub required: bool,
     pub size: Option<SizeConstraint>,
@@ -118,6 +147,7 @@ pub struct FieldInfo {
     pub validators: FieldValidators,
     pub default_value: Option<String>,
     pub type_override: Option<String>,
+    pub custom_tags: Option<String>,  // @tags JSDoc tag
     // ...
 }
 

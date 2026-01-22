@@ -52,12 +52,6 @@ type = "file"
 path = "src/__examples__/field-visibility.ts"
 output_path = "configs/defines/field-visibility.xml"
 module_name = "field_visibility"
-# 第六个数据源 - 虚拟字段测试
-[[sources]]
-type = "file"
-path = "src/__examples__/virtual-fields.ts"
-output_path = "configs/defines/virtual-fields.xml"
-module_name = "virtual_fields"
 
 # 第七个数据源 - 判别联合类型测试（$type 字段过滤）
 [[sources]]
@@ -75,47 +69,14 @@ module_name = "dollar_type"
 
 # Table 配置 - 替代 @LubanTable 装饰器
 [tables]
-# all-validators.ts
-"examples.Item" = "../datas/item"
-"examples.Skill" = "../datas/skill"
-"examples.Monster" = "../datas/monster"
-"examples.Player" = "../datas/player"
-"examples.Difficulty" = "../datas/difficulty"
-"examples.Team" = "../datas/team"
-
 # items.ts
 "items.Weapon" = "../datas/equipment/weapon"
 "items.Armor" = "../datas/equipment/armor"
 
 # table-modes.ts
-"modes.LeaderboardEntry" = { input = "../datas/leaderboard", mode = "list", index = "rank" }
-"modes.GameConfig" = { input = "../datas/game-config", mode = "one" }
-"modes.ServerSettings" = { input = "../datas/server-settings", mode = "singleton" }
-
-# virtual-fields.ts
-"virtual_fields.WeaponConfig" = "../datas/weapon-config"
-"virtual_fields.ArmorConfig" = "../datas/armor-config"
+"modes.LeaderboardEntry" = { input = "*@../datas/leaderboardentry/", mode = "list", index = "rank" }
+"modes.GameConfig" = { input = "../datas/game-config/config.json", mode = "one" }
+"modes.ServerSettings" = { input = "../datas/server-settings/settings.json", mode = "singleton" }
 
 # constructor-type.ts
 "constructor.CharacterConfig" = "../datas/character-config"
-
-# 虚拟字段配置：WeaponConfig
-[[virtual_fields]]
-class = "WeaponConfig"
-fields = [
-    { name = "mainStat", type = "ScalingStat", comment = "主属性", relocate_to = { target = "TScalingStat", prefix = "_main" } }
-]
-
-# 虚拟字段配置：WeaponConfig 第二个配置块（支持同一 class 多个配置）
-[[virtual_fields]]
-class = "WeaponConfig"
-fields = [
-    { name = "subStat", type = "ScalingStat", comment = "副属性", relocate_to = { target = "TScalingStat", prefix = "_sub" } }
-]
-
-# 虚拟字段配置：ArmorConfig
-[[virtual_fields]]
-class = "ArmorConfig"
-fields = [
-    { name = "defenseStat", type = "ScalingStat", comment = "防御属性", relocate_to = { target = "TScalingStat", prefix = "_defense" } }
-]

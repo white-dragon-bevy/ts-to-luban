@@ -11,6 +11,9 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
+  "scripts": {
+	  "dev:link-claude-to-droid:windows":"mklink /J .factory .claude"
+  },
   "bin": {
     "luban-gen": "bin/luban-gen.js"
   },
