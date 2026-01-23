@@ -92,6 +92,32 @@ export function Nominal(): PropertyDecorator {
   return () => {};
 }
 
+/**
+ * 引用验证器（已废弃，请使用 JSDoc @ref 代替）
+ * @deprecated Use JSDoc @ref tag instead
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function Ref(_target: any): PropertyDecorator {
+  return () => {};
+}
+
+/**
+ * 引用替换装饰器
+ * 1. 提供 luban 引用
+ * 2. 生成 RefReplace tag
+ * 
+ * @example
+ * @RefReplace<Item,"itemName">()
+ * 生成的 xml 为 `type="string#ref=ItemTable", tags="RefReplace=itemName"`
+ * type="string" 从 Item 的 index 推断
+ * 
+ * @returns 
+ */
+export function RefReplace<T extends object,X extends keyof T>(): PropertyDecorator{
+    return () => {};
+}
+
+
 // === JSDoc 注释说明 ===
 // 
 // @ref - 引用验证器，用于 scalar、list 元素或 map value
@@ -166,11 +192,4 @@ export type Writable<T> = {
  * string 从 T 的id 类型推断
  * ref=AssetDataTable 为 T 的表名(必须配置)
  */
-export type RefKey<T extends Identifiable> = T['id']
-
-/**
- * 标识对象接口
- */
-export interface Identifiable {
-    id: string | number;
-}
+export type RefKey<T extends {id: string | number}> = T['id']

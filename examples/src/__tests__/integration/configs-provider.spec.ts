@@ -8,6 +8,16 @@
 import { RawConfigParser } from "../../configs-provider/raw-config-parser";
 import { AllTables } from "../../types/configs/tables";
 
+// Extended interface for test mock data tables
+interface TestTables extends AllTables {
+	ItemTable: Map<string, unknown>;
+	MonsterTable: Map<string, unknown>;
+	PlayerTable: Map<string, unknown>;
+	SkillTable: Map<string, unknown>;
+	DifficultyTable: Map<string, unknown>;
+	TeamTable: Map<string, unknown>;
+}
+
 // Define test data inline to avoid JSON import issues in roblox-ts environment
 // These match the actual configs/jsonConfigs/*.json files
 const itemConfig = {
@@ -90,12 +100,12 @@ export = () => {
 		});
 
 		it("should parse Item table correctly", () => {
-			const tables = parser.parseRawConfigs(allConfigs);
+			const tables = parser.parseRawConfigs(allConfigs) as TestTables;
 
 			expect(tables).to.be.ok();
-			expect((tables as AllTables).ItemTable).to.be.ok();
+			expect(tables.ItemTable).to.be.ok();
 
-			const itemTable = (tables as AllTables).ItemTable as unknown as Map<string, unknown>;
+			const itemTable = tables.ItemTable;
 			expect(itemTable.size()).to.equal(3);
 
 			const item = itemTable.get("1");
@@ -106,8 +116,8 @@ export = () => {
 		});
 
 		it("should parse Monster table with nested structures", () => {
-			const tables = parser.parseRawConfigs(allConfigs);
-			const monsterTable = tables.MonsterTable as unknown as Map<string, unknown>;
+			const tables = parser.parseRawConfigs(allConfigs) as TestTables;
+			const monsterTable = tables.MonsterTable;
 
 			expect(monsterTable).to.be.ok();
 			expect(monsterTable.size()).to.equal(2);
@@ -136,8 +146,8 @@ export = () => {
 		});
 
 		it("should parse Player table", () => {
-			const tables = parser.parseRawConfigs(allConfigs);
-			const playerTable = tables.PlayerTable as unknown as Map<string, unknown>;
+			const tables = parser.parseRawConfigs(allConfigs) as TestTables;
+			const playerTable = tables.PlayerTable;
 
 			expect(playerTable).to.be.ok();
 			expect(playerTable.size()).to.equal(1);

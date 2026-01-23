@@ -1,11 +1,11 @@
-import { CircleShape, RectangleShape } from "../../__examples__/discriminated-union";
-import { BaseUnit, CharacterUnit, PlayerUnit, NPCUnit, StandaloneUnit } from "../../__examples__/inheritance";
-import { Item, Skill, DropItem, Monster, Player, Difficulty, Team } from "../../__examples__/all-validators";
-import { BaseEntity, Hero, Enemy, EntityConfig, ComplexConfig } from "../../__examples__/dollar-type";
-import { BaseTrigger, DamageTrigger, HealTrigger, CharacterConfig } from "../../__examples__/constructor-type";
-import { LeaderboardEntry, GameConfig, ServerSettings } from "../../__examples__/table-modes";
-import { TestPrivateFields, TestReadonlyFields } from "../../__examples__/field-visibility";
 import { Weapon, Armor, EquipmentSet } from "../../__examples__/items";
+import { BaseUnit, CharacterUnit, PlayerUnit, NPCUnit, StandaloneUnit } from "../../__examples__/inheritance";
+import { CircleShape, RectangleShape } from "../../__examples__/discriminated-union";
+import { LeaderboardEntry, GameConfig, ServerSettings } from "../../__examples__/table-modes";
+import { Item, Skill, DropItem, Monster, Player, Difficulty, Team } from "../../__examples__/all-validators";
+import { BaseTrigger, DamageTrigger, HealTrigger, CharacterConfig } from "../../__examples__/constructor-type";
+import { TestPrivateFields, TestReadonlyFields } from "../../__examples__/field-visibility";
+import { BaseEntity, Hero, Enemy, EntityConfig, ComplexConfig } from "../../__examples__/dollar-type";
 
 export const Beans = {
     "constructor.BaseTrigger": BaseTrigger,

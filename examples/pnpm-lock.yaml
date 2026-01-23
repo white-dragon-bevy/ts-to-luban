@@ -20,9 +20,6 @@ importers:
       '@rbxts/test-cloud-testez':
         specifier: ^0.5.11
         version: 0.5.11
-      '@white-dragon-bevy/luban-cli':
-        specifier: link:D:/projects/white-dragon-bevy/luban
-        version: link:../../luban
     devDependencies:
       '@rbxts/compiler-types':
         specifier: 3.0.0-types.0
