@@ -1295,6 +1295,16 @@ impl TsParser {
                         }
                         "list,string".to_string()
                     }
+                    "Set" | "ReadonlySet" => {
+                        if let Some(params) = &type_ref.type_params {
+                            if let Some(first) = params.params.first() {
+                                let element_type =
+                                    self.convert_type_with_params(first, type_params);
+                                return format!("set,{}", element_type);
+                            }
+                        }
+                        "set,string".to_string()
+                    }
                     "Map" | "Record" => {
                         if let Some(params) = &type_ref.type_params {
                             if params.params.len() >= 2 {
@@ -1634,6 +1644,26 @@ export class MyClass {
 
         assert_eq!(classes[0].fields[0].field_type, "map,string,double");
         assert_eq!(classes[0].fields[1].field_type, "map,string,bool");
+    }
+
+    #[test]
+    fn test_parse_set_types() {
+        let ts_code = r#"
+export class MyClass {
+    public items: Set<string>;
+    public numbers: Set<number>;
+    public readonlyItems: ReadonlySet<Item>;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes[0].fields[0].field_type, "set,string");
+        assert_eq!(classes[0].fields[1].field_type, "set,double");
+        assert_eq!(classes[0].fields[2].field_type, "set,Item");
     }
 
     #[test]

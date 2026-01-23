@@ -63,10 +63,15 @@ impl TypeMapper {
     }
 
     pub fn map_full_type(&self, field_type: &str) -> String {
-        // Handle list,T and map,K,V types
+        // Handle list,T and map,K,V and set,T types
         if field_type.starts_with("list,") {
             let element = &field_type[5..];
             return format!("list,{}", self.map(element));
+        }
+
+        if field_type.starts_with("set,") {
+            let element = &field_type[4..];
+            return format!("set,{}", self.map(element));
         }
 
         if field_type.starts_with("map,") {
