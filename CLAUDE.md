@@ -90,32 +90,34 @@ luban-ts/                # 示例项目 (roblox-ts), 目录名为 examples/
 - `@default="0"` - 默认值
 - `@sep="|"` - 列表分隔符
 - `@mapsep=",|"` - Map 分隔符
-- `@ref` - 引用验证器（自动发现目标表）
-- `@refKey` - Map Key 引用验证器（仅用于 Map）
+- `@ref` - 引用验证器（自动发现目标表，自动添加 `tags="RefOverride=true"`）
 - `@tags="key=value,..."` - 自定义标签
 
 **类/接口级别**：`@table="map,id"`, `@input="path"`
 
 **枚举级别**：`@tags="string"`, `@flags="true"`, `@alias:别名`
 
-### 引用验证器 (@ref/@refKey)
+### 泛型类型
 
-使用 JSDoc 注释标记引用字段，字段类型必须是配置在 `[tables]` 中的 class/interface：
+- `RefKey<T>` - Map Key 引用类型，用于 `Map<RefKey<T>, V>` 模式
+
+### 引用验证器 (@ref / RefKey<T>)
+
+使用 JSDoc 注释或泛型类型标记引用字段，字段类型必须是配置在 `[tables]` 中的 class/interface：
 
 ```typescript
 /**
- * @ref
+ * @ref - 自动添加 tags="RefOverride=true"
  */
-item: Item;  // -> indexType#ref=module.ItemTable
+item: Item;  // -> indexType#ref=module.ItemTable tags="RefOverride=true"
 
 /**
- * @refKey
- * @ref
+ * @ref - value 引用 Skill 表
  */
-itemToSkill: Map<Item, Skill>;  // key 引用 Item 表，value 引用 Skill 表
+itemToSkill: Map<RefKey<Item>, Skill>;  // RefKey<Item> 引用 Item 表 (不添加 RefOverride)
 
 /**
- * @tags="RefOverride=true"
+ * @tags="RefOverride=true" - 手动添加标签
  */
 itemId: number;  // -> double tags="RefOverride=true"
 ```
@@ -130,7 +132,7 @@ itemId: number;  // -> double tags="RefOverride=true"
 // 字段验证器
 pub struct FieldValidators {
     pub has_ref: bool,           // @ref JSDoc tag
-    pub has_ref_key: bool,       // @refKey JSDoc tag
+    pub has_ref_key: bool,       // RefKey<T> generic type
     pub range: Option<(f64, f64)>,
     pub required: bool,
     pub size: Option<SizeConstraint>,
@@ -148,6 +150,7 @@ pub struct FieldInfo {
     pub default_value: Option<String>,
     pub type_override: Option<String>,
     pub custom_tags: Option<String>,  // @tags JSDoc tag
+    pub ref_key_inner_type: Option<String>,  // RefKey<T> inner type
     // ...
 }
 
