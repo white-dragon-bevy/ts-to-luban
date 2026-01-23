@@ -746,7 +746,7 @@ impl<'a> XmlGenerator<'a> {
         }
 
         let container = parts[0];
-        let element_type = parts[1];
+        let rest = parts[1]; // For list: "ElementType", for map: "KeyType,ValueType"
 
         // Build container validators
         let mut container_mods = Vec::new();
@@ -778,8 +778,65 @@ impl<'a> XmlGenerator<'a> {
             container_mods.push(format!("index={}", index));
         }
 
+        // Handle map type separately - need to process key and value types
+        if container == "map" {
+            // Split rest into key and value: "KeyType,ValueType"
+            let kv_parts: Vec<&str> = rest.splitn(2, ',').collect();
+            if kv_parts.len() == 2 {
+                let key_type = kv_parts[0];
+                let value_type = kv_parts[1];
+
+                // Apply @refKey to key type
+                let key_validators = FieldValidators {
+                    has_ref: validators.has_ref_key, // @refKey applies to key
+                    has_ref_key: false,
+                    range: None,
+                    required: false,
+                    set_values: vec![],
+                    size: None,
+                    index_field: None,
+                    nominal: false,
+                };
+                let key_with_validators =
+                    self.apply_scalar_validators_with_default(key_type, &key_validators, false, None);
+
+                // Apply @ref to value type
+                let value_validators = FieldValidators {
+                    has_ref: validators.has_ref, // @ref applies to value
+                    has_ref_key: false,
+                    range: validators.range,
+                    required: validators.required,
+                    set_values: validators.set_values.clone(),
+                    size: None,
+                    index_field: None,
+                    nominal: validators.nominal,
+                };
+                let value_with_validators =
+                    self.apply_scalar_validators_with_default(value_type, &value_validators, false, None);
+
+                // Build the final type string for map
+                let mut result = if container_mods.is_empty() {
+                    format!("map,{},{}", key_with_validators, value_with_validators)
+                } else {
+                    format!(
+                        "(map#{}),{},{}",
+                        container_mods.join("#"),
+                        key_with_validators,
+                        value_with_validators
+                    )
+                };
+
+                // Append default value at the end if present
+                if let Some(default) = default_value {
+                    result.push_str(&format!("#default={}", default));
+                }
+
+                return result;
+            }
+        }
+
+        // For list/array/set types
         // Build element type with its validators (ref, range, set, required)
-        // Note: element_type is already resolved with module prefix
         let element_validators = FieldValidators {
             has_ref: validators.has_ref,
             has_ref_key: false,
@@ -793,7 +850,7 @@ impl<'a> XmlGenerator<'a> {
         };
 
         let element_with_validators =
-            self.apply_scalar_validators_with_default(element_type, &element_validators, false, None);
+            self.apply_scalar_validators_with_default(rest, &element_validators, false, None);
 
         // Build the final type string
         let mut result = if container_mods.is_empty() {
@@ -2795,6 +2852,304 @@ mod tests {
         assert!(
             xml.contains(r#"<table name="TbBattle" value="BattleData" index="battleId" input="../datas/battle" />"#),
             "Should use custom table name from config. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_ref_on_list_generates_ref_validator() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "DropConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![FieldInfo {
+                name: "items".to_string(),
+                field_type: "list,Item".to_string(),
+                comment: None,
+                alias: None,
+                is_optional: false,
+                validators: FieldValidators {
+                    has_ref: true,
+                    ..Default::default()
+                },
+                is_object_factory: false,
+                factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
+                original_type: "Item[]".to_string(),
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
+                custom_tags: None,
+            }],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with Item table
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "items.Item".to_string(),
+            TableConfig::Full {
+                input: "../datas/items".to_string(),
+                name: Some("TbItem".to_string()),
+                mode: None,
+                index: Some("id".to_string()),
+            },
+        );
+        let mut table_registry = TableRegistry::from_config(&tables_config);
+
+        // Set index type for Item table
+        let item_class = ClassInfo {
+            name: "Item".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("id", "string", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        table_registry.set_index_types(&[item_class], &type_mapper);
+
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "items");
+
+        // Should generate list,string#ref=items.TbItem
+        assert!(
+            xml.contains(r#"type="list,string#ref=items.TbItem""#),
+            "Should generate ref validator for list element. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_ref_on_map_generates_ref_validator() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "SkillConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![FieldInfo {
+                name: "itemToSkill".to_string(),
+                field_type: "map,Item,Skill".to_string(),
+                comment: None,
+                alias: None,
+                is_optional: false,
+                validators: FieldValidators {
+                    has_ref: true,      // @ref for value
+                    has_ref_key: true,  // @refKey for key
+                    ..Default::default()
+                },
+                is_object_factory: false,
+                factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
+                original_type: "Map<Item, Skill>".to_string(),
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
+                custom_tags: None,
+            }],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: Some("skills".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with Item and Skill tables
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "items.Item".to_string(),
+            TableConfig::Full {
+                input: "../datas/items".to_string(),
+                name: Some("TbItem".to_string()),
+                mode: None,
+                index: Some("id".to_string()),
+            },
+        );
+        tables_config.insert(
+            "skills.Skill".to_string(),
+            TableConfig::Full {
+                input: "../datas/skills".to_string(),
+                name: Some("TbSkill".to_string()),
+                mode: None,
+                index: Some("skillId".to_string()),
+            },
+        );
+        let mut table_registry = TableRegistry::from_config(&tables_config);
+
+        // Set index types
+        let item_class = ClassInfo {
+            name: "Item".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("id", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+        let skill_class = ClassInfo {
+            name: "Skill".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("skillId", "string", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("skills".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        table_registry.set_index_types(&[item_class, skill_class], &type_mapper);
+
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "skills");
+
+        // Should generate map,int#ref=items.TbItem,string#ref=skills.TbSkill
+        assert!(
+            xml.contains(r#"type="map,int#ref=items.TbItem,string#ref=skills.TbSkill""#),
+            "Should generate ref validators for both map key and value. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_ref_on_set_generates_ref_validator() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "CollectionConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![FieldInfo {
+                name: "uniqueItems".to_string(),
+                field_type: "set,Item".to_string(),
+                comment: None,
+                alias: None,
+                is_optional: false,
+                validators: FieldValidators {
+                    has_ref: true,
+                    ..Default::default()
+                },
+                is_object_factory: false,
+                factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
+                original_type: "Set<Item>".to_string(),
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
+                custom_tags: None,
+            }],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with Item table
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "items.Item".to_string(),
+            TableConfig::Full {
+                input: "../datas/items".to_string(),
+                name: Some("TbItem".to_string()),
+                mode: None,
+                index: Some("id".to_string()),
+            },
+        );
+        let mut table_registry = TableRegistry::from_config(&tables_config);
+
+        // Set index type for Item table
+        let item_class = ClassInfo {
+            name: "Item".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("id", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        table_registry.set_index_types(&[item_class], &type_mapper);
+
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "items");
+
+        // Should generate set,int#ref=items.TbItem (int is the index type)
+        assert!(
+            xml.contains(r#"type="set,int#ref=items.TbItem""#),
+            "Should generate ref validator for set element. Got:\n{}",
             xml
         );
     }
