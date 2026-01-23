@@ -464,12 +464,15 @@ impl<'a> XmlGenerator<'a> {
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
-        // Build tags: RefOverride (auto for @ref/@refKey) + ObjectFactory + custom_tags
+        // Build tags: RefOverride (auto for @ref/@refKey JSDoc tags, NOT for RefKey<T> generic) + ObjectFactory + custom_tags
         let tags_attr = {
             let mut tags = Vec::new();
 
-            // Auto-add RefOverride=true when @ref or @refKey is present
-            if field.validators.has_ref || field.validators.has_ref_key {
+            // Auto-add RefOverride=true when @ref or @refKey JSDoc tag is present
+            // But NOT when RefKey<T> generic type is used (ref_key_inner_type is set)
+            let has_jsdoc_ref = field.validators.has_ref || 
+                (field.validators.has_ref_key && field.ref_key_inner_type.is_none());
+            if has_jsdoc_ref {
                 tags.push("RefOverride=true");
             }
 
@@ -1238,6 +1241,7 @@ mod tests {
             separator: None,
             map_separator: None,
             custom_tags: None,
+            ref_key_inner_type: None,
         }
     }
 
@@ -1264,7 +1268,8 @@ mod tests {
                 separator: None,
                 map_separator: None,
                 custom_tags: None,
-            }],
+            ref_key_inner_type: None,
+}],
             implements: vec![],
             extends: Some("BaseClass".to_string()),
             source_file: "test.ts".to_string(),
@@ -1730,6 +1735,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
                 FieldInfo {
                     name: "normalField".to_string(),
@@ -1748,6 +1754,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -1800,6 +1807,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
                 FieldInfo {
                     name: "width".to_string(),
@@ -1818,6 +1826,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -1938,6 +1947,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
                 FieldInfo {
                     name: "component".to_string(),
@@ -1956,6 +1966,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2002,6 +2013,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
                 FieldInfo {
                     name: "name".to_string(),
@@ -2020,6 +2032,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
                 FieldInfo {
                     name: "value".to_string(),
@@ -2038,6 +2051,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2272,6 +2286,7 @@ mod tests {
                     type_override: Some("int".to_string()),
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2321,6 +2336,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2370,6 +2386,7 @@ mod tests {
                     type_override: Some("int".to_string()),
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2419,6 +2436,7 @@ mod tests {
                     type_override: None,
                     separator: Some("|".to_string()),
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2468,6 +2486,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: Some(",|".to_string()),
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2520,6 +2539,7 @@ mod tests {
                     type_override: None,
                     separator: Some("|".to_string()),
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2609,6 +2629,7 @@ mod tests {
                     type_override: None,
                     separator: None,
                     map_separator: None,
+                    ref_key_inner_type: None,
                 },
             ],
             implements: vec![],
@@ -2884,7 +2905,8 @@ mod tests {
                 separator: None,
                 map_separator: None,
                 custom_tags: None,
-            }],
+            ref_key_inner_type: None,
+}],
             implements: vec![],
             extends: None,
             source_file: "test.ts".to_string(),
@@ -2975,7 +2997,8 @@ mod tests {
                 separator: None,
                 map_separator: None,
                 custom_tags: None,
-            }],
+            ref_key_inner_type: None,
+}],
             implements: vec![],
             extends: None,
             source_file: "test.ts".to_string(),
@@ -3092,7 +3115,8 @@ mod tests {
                 separator: None,
                 map_separator: None,
                 custom_tags: None,
-            }],
+            ref_key_inner_type: None,
+}],
             implements: vec![],
             extends: None,
             source_file: "test.ts".to_string(),

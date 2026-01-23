@@ -49,6 +49,8 @@ pub struct FieldInfo {
     pub map_separator: Option<String>,
     /// Custom tags from @tags JSDoc tag (e.g., @tags="RefOverride=true,foo=bar")
     pub custom_tags: Option<String>,
+    /// Inner type T for RefKey<T> in Map<RefKey<T>, V> - used for map key ref resolution
+    pub ref_key_inner_type: Option<String>,
 }
 
 impl Default for FieldInfo {
@@ -70,6 +72,7 @@ impl Default for FieldInfo {
             separator: None,
             map_separator: None,
             custom_tags: None,
+            ref_key_inner_type: None,
         }
     }
 }

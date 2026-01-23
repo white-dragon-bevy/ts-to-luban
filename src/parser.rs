@@ -27,6 +27,8 @@ struct TypeInfo {
     factory_inner_type: Option<String>,
     is_constructor: bool,
     constructor_inner_type: Option<String>,
+    /// Inner type T for RefKey<T> - used for Map key ref resolution
+    ref_key_inner_type: Option<String>,
 }
 
 pub struct TsParser {
@@ -822,7 +824,8 @@ impl TsParser {
                         factory_inner_type: None,
                         is_constructor: false,
                         constructor_inner_type: None,
-                    }
+                    ref_key_inner_type: None,
+}
                 }
             });
 
@@ -846,6 +849,7 @@ impl TsParser {
             separator: None,
             map_separator: None,
             custom_tags: None,
+            ref_key_inner_type: type_info.ref_key_inner_type,
         })
     }
 
@@ -896,7 +900,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            }
+            ref_key_inner_type: None,
+}
         };
 
         // Extract field comment (raw) for @alias parsing
@@ -925,7 +930,7 @@ impl TsParser {
         // Parse field decorators from ClassProp
         let mut validators = parse_field_decorators(&prop.decorators);
         validators.has_ref = has_ref;
-        validators.has_ref_key = has_ref_key;
+        validators.has_ref_key = has_ref_key || type_info.ref_key_inner_type.is_some();
 
         Some(FieldInfo {
             name,
@@ -944,6 +949,7 @@ impl TsParser {
             separator,
             map_separator,
             custom_tags,
+            ref_key_inner_type: type_info.ref_key_inner_type,
         })
     }
 
@@ -978,7 +984,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            });
+            ref_key_inner_type: None,
+});
 
         // Extract field comment (raw) for @alias parsing
         let raw_comment = self.get_raw_leading_comment(prop.span.lo, comments);
@@ -1006,7 +1013,7 @@ impl TsParser {
         // Build validators with JSDoc tags
         let validators = FieldValidators {
             has_ref,
-            has_ref_key,
+            has_ref_key: has_ref_key || type_info.ref_key_inner_type.is_some(),
             ..Default::default()
         };
 
@@ -1027,6 +1034,7 @@ impl TsParser {
             separator,
             map_separator,
             custom_tags,
+            ref_key_inner_type: type_info.ref_key_inner_type,
         })
     }
 
@@ -1057,7 +1065,8 @@ impl TsParser {
                                 factory_inner_type: None,
                                 is_constructor: false,
                                 constructor_inner_type: None,
-                            };
+                            ref_key_inner_type: None,
+};
                         }
                     }
                 }
@@ -1080,7 +1089,8 @@ impl TsParser {
                                 factory_inner_type: Some(inner_type),
                                 is_constructor: false,
                                 constructor_inner_type: None,
-                            };
+                            ref_key_inner_type: None,
+};
                         }
                     }
                 }
@@ -1101,7 +1111,8 @@ impl TsParser {
                                 factory_inner_type: None,
                                 is_constructor: true,
                                 constructor_inner_type: Some(inner_type),
-                            };
+                            ref_key_inner_type: None,
+};
                         }
                     }
                 }
@@ -1123,7 +1134,42 @@ impl TsParser {
                                     factory_inner_type: Some(inner_type),
                                     is_constructor: false,
                                     constructor_inner_type: None,
-                                };
+                                ref_key_inner_type: None,
+};
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for Map<RefKey<T>, V> pattern - detect RefKey in map key position
+        if let TsType::TsTypeRef(type_ref) = ts_type {
+            if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                if ident.sym.to_string() == "Map" || ident.sym.to_string() == "Record" {
+                    if let Some(params) = &type_ref.type_params {
+                        if params.params.len() >= 2 {
+                            // Check if key type is RefKey<T>
+                            if let TsType::TsTypeRef(key_ref) = &*params.params[0] {
+                                if let TsEntityName::Ident(key_ident) = &key_ref.type_name {
+                                    if key_ident.sym.to_string() == "RefKey" {
+                                        if let Some(key_params) = &key_ref.type_params {
+                                            if let Some(first) = key_params.params.first() {
+                                                let ref_key_type = self.convert_type_with_params(first, type_params);
+                                                let value_type = self.convert_type_with_params(&params.params[1], type_params);
+                                                return TypeInfo {
+                                                    field_type: format!("map,{},{}", ref_key_type, value_type),
+                                                    original_type,
+                                                    is_object_factory: false,
+                                                    factory_inner_type: None,
+                                                    is_constructor: false,
+                                                    constructor_inner_type: None,
+                                                    ref_key_inner_type: Some(ref_key_type),
+                                                };
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1138,6 +1184,7 @@ impl TsParser {
             factory_inner_type: None,
             is_constructor: false,
             constructor_inner_type: None,
+            ref_key_inner_type: None,
         }
     }
 
@@ -1167,7 +1214,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
             Expr::Lit(Lit::Str(_)) => TypeInfo {
                 field_type: "string".to_string(),
                 original_type: "string".to_string(),
@@ -1175,7 +1223,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
             Expr::Lit(Lit::Bool(_)) => TypeInfo {
                 field_type: "bool".to_string(),
                 original_type: "boolean".to_string(),
@@ -1183,7 +1232,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
             Expr::Lit(Lit::Null(_))
             | Expr::Unary(UnaryExpr {
                 op: UnaryOp::Void, ..
@@ -1194,7 +1244,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
             // For array literals: `[]` or `[1, 2, 3]`
             Expr::Array(_) => TypeInfo {
                 field_type: "list,unknown".to_string(),
@@ -1203,7 +1254,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
             // For object literals: `{}`
             Expr::Object(_) => TypeInfo {
                 field_type: "unknown".to_string(),
@@ -1212,7 +1264,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
             // For new expressions: `new Vector3(10, 60, 10)`
             Expr::New(new_expr) => {
                 if let Expr::Ident(ident) = &*new_expr.callee {
@@ -1224,7 +1277,8 @@ impl TsParser {
                         factory_inner_type: None,
                         is_constructor: false,
                         constructor_inner_type: None,
-                    }
+                    ref_key_inner_type: None,
+}
                 } else {
                     TypeInfo {
                         field_type: "unknown".to_string(),
@@ -1233,7 +1287,8 @@ impl TsParser {
                         factory_inner_type: None,
                         is_constructor: false,
                         constructor_inner_type: None,
-                    }
+                    ref_key_inner_type: None,
+}
                 }
             }
             // Default to string for other cases
@@ -1244,7 +1299,8 @@ impl TsParser {
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-            },
+            ref_key_inner_type: None,
+},
         }
     }
 
@@ -2397,5 +2453,39 @@ export class ConfigWithTags {
         // normal without tags
         assert_eq!(class.fields[2].name, "normal");
         assert_eq!(class.fields[2].custom_tags, None);
+    }
+
+    #[test]
+    fn test_parse_ref_key_generic_type() {
+        let ts_code = r#"
+export class ItemSkillConfig {
+    /** Map with RefKey<T> for key */
+    public itemSkills: Map<RefKey<Item>, number>;
+
+    /** Map with RefKey<T> for key and normal value */
+    public itemToName: Map<RefKey<Item>, string>;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 2);
+
+        // itemSkills with RefKey<Item>
+        assert_eq!(class.fields[0].name, "itemSkills");
+        assert_eq!(class.fields[0].field_type, "map,Item,double");
+        assert!(class.fields[0].validators.has_ref_key);
+        assert_eq!(class.fields[0].ref_key_inner_type, Some("Item".to_string()));
+
+        // itemToName with RefKey<Item>
+        assert_eq!(class.fields[1].name, "itemToName");
+        assert_eq!(class.fields[1].field_type, "map,Item,string");
+        assert!(class.fields[1].validators.has_ref_key);
+        assert_eq!(class.fields[1].ref_key_inner_type, Some("Item".to_string()));
     }
 }
