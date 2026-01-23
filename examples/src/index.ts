@@ -5,10 +5,9 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ClassDecorator = (target: any) => any;
 
-type PropertyDecorator = (
-  target: object,
-  propertyKey: string | symbol
-) => void;
+
+type PropertyDecorator = (target: object, propertyKey?: string | symbol, _?:number) => void;
+
 
 // === 类装饰器 ===
 

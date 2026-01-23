@@ -1,5 +1,5 @@
 type ClassDecorator = (target: any) => any;
-type PropertyDecorator = (target: object, propertyKey: string | symbol) => void;
+type PropertyDecorator = (target: object, propertyKey?: string | symbol, _?:number) => void;
 export interface LubanTableConfig {
     mode: "map" | "list" | "one" | "singleton";
     index?: string;
