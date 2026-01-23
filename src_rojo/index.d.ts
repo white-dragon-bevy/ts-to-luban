@@ -58,4 +58,26 @@ export type Writable<T> = {
 export type Ref<T> = T
 
 
+/**
+ * 引用检查
+ * 用于检查引用是否合法
+ * T 为引用类型
+ * 将生成 ref 验证器
+ * 要求 T 类型必须拥有 id 成员且为基础类型.
+ * 比如生成:
+ * type="string#ref=AssetDataTable"
+ * 
+ * string 从 T 的id 类型推断
+ * ref=AssetDataTable 为 T 的表名(必须配置)
+ */
+export type RefKey<T extends Identifiable> = T['id']
+
+/**
+ * 标识对象接口
+ */
+export interface Identifiable {
+    id: string | number;
+}
+
+
 export {};
