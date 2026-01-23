@@ -51,6 +51,9 @@ pub struct FieldInfo {
     pub custom_tags: Option<String>,
     /// Inner type T for RefKey<T> in Map<RefKey<T>, V> - used for map key ref resolution
     pub ref_key_inner_type: Option<String>,
+    /// RefReplace decorator: (TypeName, FieldName) from @RefReplace<T, "field">()
+    /// Generates type from T's index_type and tags="RefOverride=field"
+    pub ref_replace: Option<(String, String)>,
 }
 
 impl Default for FieldInfo {
@@ -73,6 +76,7 @@ impl Default for FieldInfo {
             map_separator: None,
             custom_tags: None,
             ref_key_inner_type: None,
+            ref_replace: None,
         }
     }
 }

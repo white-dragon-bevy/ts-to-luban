@@ -829,8 +829,8 @@ impl TsParser {
                 }
             });
 
-        // Parse field decorators from TsParamProp
-        let validators = parse_field_decorators(&prop.decorators);
+        // Parse field decorators from TsParamProp (including @RefReplace)
+        let (validators, ref_replace) = parse_field_decorators_with_ref_replace(&prop.decorators);
 
         Some(FieldInfo {
             name,
@@ -850,6 +850,7 @@ impl TsParser {
             map_separator: None,
             custom_tags: None,
             ref_key_inner_type: type_info.ref_key_inner_type,
+            ref_replace,
         })
     }
 
@@ -926,8 +927,8 @@ impl TsParser {
             .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref"]))
             .filter(|c| !c.is_empty());
 
-        // Parse field decorators from ClassProp
-        let mut validators = parse_field_decorators(&prop.decorators);
+        // Parse field decorators from ClassProp (including @RefReplace)
+        let (mut validators, ref_replace) = parse_field_decorators_with_ref_replace(&prop.decorators);
         validators.has_ref = has_ref;
         validators.has_ref_key = type_info.ref_key_inner_type.is_some();
 
@@ -949,6 +950,7 @@ impl TsParser {
             map_separator,
             custom_tags,
             ref_key_inner_type: type_info.ref_key_inner_type,
+            ref_replace,
         })
     }
 
@@ -1033,6 +1035,7 @@ impl TsParser {
             map_separator,
             custom_tags,
             ref_key_inner_type: type_info.ref_key_inner_type,
+            ref_replace: None, // Interfaces don't support decorators
         })
     }
 
@@ -1546,7 +1549,14 @@ fn parse_jsdoc_description_excluding_tags(text: &str, exclude_tags: &[&str]) -> 
 /// Parse field decorators and return FieldValidators
 /// Note: @Ref decorator is removed, use JSDoc @ref instead
 fn parse_field_decorators(decorators: &[Decorator]) -> FieldValidators {
+    let (validators, _) = parse_field_decorators_with_ref_replace(decorators);
+    validators
+}
+
+/// Parse field decorators and return FieldValidators + RefReplace info
+fn parse_field_decorators_with_ref_replace(decorators: &[Decorator]) -> (FieldValidators, Option<(String, String)>) {
     let mut validators = FieldValidators::default();
+    let mut ref_replace = None;
 
     for dec in decorators {
         if let Some(parsed) = parse_decorator(dec) {
@@ -1596,12 +1606,20 @@ fn parse_field_decorators(decorators: &[Decorator]) -> FieldValidators {
                 "Nominal" => {
                     validators.nominal = true;
                 }
+                "RefReplace" => {
+                    // @RefReplace<T, "field">() - extract type params
+                    if parsed.type_params.len() >= 2 {
+                        let type_name = parsed.type_params[0].clone();
+                        let field_name = parsed.type_params[1].clone();
+                        ref_replace = Some((type_name, field_name));
+                    }
+                }
                 _ => {}
             }
         }
     }
 
-    validators
+    (validators, ref_replace)
 }
 
 #[cfg(test)]
@@ -2435,5 +2453,36 @@ export class ItemSkillConfig {
         assert_eq!(class.fields[1].field_type, "map,Item,string");
         assert!(class.fields[1].validators.has_ref_key);
         assert_eq!(class.fields[1].ref_key_inner_type, Some("Item".to_string()));
+    }
+
+    #[test]
+    fn test_parse_ref_replace_decorator() {
+        let ts_code = r#"
+export class DropConfig {
+    /** Item reference with field replacement */
+    @RefReplace<Item, "itemName">()
+    public itemRef: string;
+
+    /** Normal field */
+    public count: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 2);
+
+        // itemRef with @RefReplace<Item, "itemName">()
+        assert_eq!(class.fields[0].name, "itemRef");
+        assert_eq!(class.fields[0].ref_replace, Some(("Item".to_string(), "itemName".to_string())));
+
+        // count without @RefReplace
+        assert_eq!(class.fields[1].name, "count");
+        assert_eq!(class.fields[1].ref_replace, None);
     }
 }
