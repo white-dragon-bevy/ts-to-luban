@@ -464,15 +464,13 @@ impl<'a> XmlGenerator<'a> {
             .map(|a| format!(r#" alias="{}""#, escape_xml(a)))
             .unwrap_or_default();
 
-        // Build tags: RefOverride (auto for @ref/@refKey JSDoc tags, NOT for RefKey<T> generic) + ObjectFactory + custom_tags
+        // Build tags: RefOverride (auto for @ref JSDoc tag only) + ObjectFactory + custom_tags
         let tags_attr = {
             let mut tags = Vec::new();
 
-            // Auto-add RefOverride=true when @ref or @refKey JSDoc tag is present
-            // But NOT when RefKey<T> generic type is used (ref_key_inner_type is set)
-            let has_jsdoc_ref = field.validators.has_ref || 
-                (field.validators.has_ref_key && field.ref_key_inner_type.is_none());
-            if has_jsdoc_ref {
+            // Auto-add RefOverride=true when @ref JSDoc tag is present
+            // NOT when RefKey<T> generic type is used
+            if field.validators.has_ref {
                 tags.push("RefOverride=true");
             }
 
@@ -2984,21 +2982,21 @@ mod tests {
                 is_optional: false,
                 validators: FieldValidators {
                     has_ref: true,      // @ref for value
-                    has_ref_key: true,  // @refKey for key
+                    has_ref_key: true,  // RefKey<T> for key
                     ..Default::default()
                 },
                 is_object_factory: false,
                 factory_inner_type: None,
                 is_constructor: false,
                 constructor_inner_type: None,
-                original_type: "Map<Item, Skill>".to_string(),
+                original_type: "Map<RefKey<Item>, Skill>".to_string(),
                 default_value: None,
                 type_override: None,
                 separator: None,
                 map_separator: None,
                 custom_tags: None,
-            ref_key_inner_type: None,
-}],
+                ref_key_inner_type: Some("Item".to_string()),
+            }],
             implements: vec![],
             extends: None,
             source_file: "test.ts".to_string(),

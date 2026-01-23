@@ -917,20 +917,19 @@ impl TsParser {
         let map_separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "mapsep"));
         let custom_tags = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "tags"));
 
-        // Parse @ref and @refKey JSDoc tags
+        // Parse @ref JSDoc tag
         let has_ref = raw_comment.as_ref().map(|c| has_jsdoc_ref_tag(c)).unwrap_or(false);
-        let has_ref_key = raw_comment.as_ref().map(|c| has_jsdoc_ref_key_tag(c)).unwrap_or(false);
 
         // Get cleaned comment (without @alias and other JSDoc modifier lines)
         let comment = raw_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref", "refKey"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref"]))
             .filter(|c| !c.is_empty());
 
         // Parse field decorators from ClassProp
         let mut validators = parse_field_decorators(&prop.decorators);
         validators.has_ref = has_ref;
-        validators.has_ref_key = has_ref_key || type_info.ref_key_inner_type.is_some();
+        validators.has_ref_key = type_info.ref_key_inner_type.is_some();
 
         Some(FieldInfo {
             name,
@@ -1000,20 +999,19 @@ impl TsParser {
         let map_separator = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "mapsep"));
         let custom_tags = raw_comment.as_ref().and_then(|c| parse_jsdoc_tag(c, "tags"));
 
-        // Parse @ref and @refKey JSDoc tags
+        // Parse @ref JSDoc tag
         let has_ref = raw_comment.as_ref().map(|c| has_jsdoc_ref_tag(c)).unwrap_or(false);
-        let has_ref_key = raw_comment.as_ref().map(|c| has_jsdoc_ref_key_tag(c)).unwrap_or(false);
 
         // Get cleaned comment (without @alias and other JSDoc modifier lines)
         let comment = raw_comment
             .as_ref()
-            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref", "refKey"]))
+            .map(|c| parse_jsdoc_description_excluding_tags(c, &["alias", "default", "type", "sep", "mapsep", "tags", "ref"]))
             .filter(|c| !c.is_empty());
 
         // Build validators with JSDoc tags
         let validators = FieldValidators {
             has_ref,
-            has_ref_key: has_ref_key || type_info.ref_key_inner_type.is_some(),
+            has_ref_key: type_info.ref_key_inner_type.is_some(),
             ..Default::default()
         };
 
@@ -1479,17 +1477,6 @@ fn has_jsdoc_ref_tag(text: &str) -> bool {
     for line in text.lines() {
         let line = line.trim().trim_start_matches('*').trim();
         if line == "@ref" || line.starts_with("@ref ") || line.starts_with("@ref\t") {
-            return true;
-        }
-    }
-    false
-}
-
-/// Check if a JSDoc comment contains @refKey tag (standalone, no value needed)
-fn has_jsdoc_ref_key_tag(text: &str) -> bool {
-    for line in text.lines() {
-        let line = line.trim().trim_start_matches('*').trim();
-        if line == "@refKey" || line.starts_with("@refKey ") || line.starts_with("@refKey\t") {
             return true;
         }
     }
@@ -2372,45 +2359,6 @@ export class DropConfig {
         // count field without @ref
         assert_eq!(class.fields[2].name, "count");
         assert!(!class.fields[2].validators.has_ref);
-    }
-
-    #[test]
-    fn test_parse_ref_key_jsdoc_tag() {
-        let ts_code = r#"
-export class ItemSkillMap {
-    /**
-     * Map with key ref
-     * @refKey
-     */
-    public itemSkills: Map<Item, number>;
-
-    /**
-     * Map with both key and value ref
-     * @refKey
-     * @ref
-     */
-    public itemToSkill: Map<Item, Skill>;
-}
-"#;
-        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
-        file.write_all(ts_code.as_bytes()).unwrap();
-
-        let parser = TsParser::new();
-        let classes = parser.parse_file(file.path()).unwrap();
-
-        assert_eq!(classes.len(), 1);
-        let class = &classes[0];
-        assert_eq!(class.fields.len(), 2);
-
-        // itemSkills with @refKey only
-        assert_eq!(class.fields[0].name, "itemSkills");
-        assert!(class.fields[0].validators.has_ref_key);
-        assert!(!class.fields[0].validators.has_ref);
-
-        // itemToSkill with both @refKey and @ref
-        assert_eq!(class.fields[1].name, "itemToSkill");
-        assert!(class.fields[1].validators.has_ref_key);
-        assert!(class.fields[1].validators.has_ref);
     }
 
     #[test]

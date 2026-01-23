@@ -9,8 +9,8 @@ pub struct FieldValidators {
     /// @ref JSDoc tag - applies to scalar, list element, or map value
     /// Auto-discovers target table from field type
     pub has_ref: bool,
-    /// @refKey JSDoc tag - applies to map key only
-    /// Auto-discovers target table from map key type
+    /// RefKey<T> generic type - applies to map key only
+    /// Set when Map<RefKey<T>, V> pattern is detected
     pub has_ref_key: bool,
     pub range: Option<(f64, f64)>,
     pub required: bool,
