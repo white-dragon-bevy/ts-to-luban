@@ -2,13 +2,23 @@
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const isWindows = process.platform === 'win32';
-const binaryName = isWindows ? 'luban-gen.exe' : 'luban-gen';
+const platform = process.platform;
+const arch = process.arch;
+
+let binaryName;
+if (platform === 'win32') {
+  binaryName = 'luban-gen.exe';
+} else if (platform === 'darwin') {
+  binaryName = arch === 'arm64' ? 'luban-gen-darwin-arm64' : 'luban-gen-darwin-x64';
+} else {
+  binaryName = 'luban-gen-linux';
+}
+
 const binaryPath = path.join(__dirname, binaryName);
 
 const result = spawnSync(binaryPath, process.argv.slice(2), {
   stdio: 'inherit',
-  shell: isWindows,
+  shell: platform === 'win32',
 });
 
 if (result.error) {
