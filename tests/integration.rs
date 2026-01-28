@@ -59,10 +59,11 @@ path = "{}"
     // Verify output content
     let output = fs::read_to_string(&output_path).unwrap();
 
-    // Check for SimpleClass (class without extends has parent="TsClass")
+    // Check for SimpleClass (class without extends has no parent)
     assert!(
-        output.contains(r#"<bean name="SimpleClass" parent="TsClass">"#),
-        "Missing SimpleClass bean with parent='TsClass'"
+        output.contains(r#"<bean name="SimpleClass">"#)
+            && !output.contains(r#"<bean name="SimpleClass" parent="#),
+        "Missing SimpleClass bean (should have no parent)"
     );
 
     // Check for DamageTrigger (class implements EntityTrigger, has parent="EntityTrigger")

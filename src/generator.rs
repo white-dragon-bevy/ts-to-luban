@@ -329,7 +329,7 @@ impl<'a> XmlGenerator<'a> {
     /// Resolves the parent for a class based on:
     /// 1. Extends keyword (highest priority)
     /// 2. Single implements interface (only when no extends)
-    /// 3. Default "TsClass" (only when no extends and no/multiple implements)
+    /// 3. No parent (empty string) when no extends and no/multiple implements
     fn resolve_class_parent(&self, class: &ClassInfo, _all_classes: &[ClassInfo]) -> String {
         // Priority 1: Use extends if present
         if let Some(extends) = &class.extends {
@@ -341,8 +341,8 @@ impl<'a> XmlGenerator<'a> {
             return class.implements[0].clone();
         }
 
-        // Priority 3: Default to TsClass
-        "TsClass".to_string()
+        // Priority 3: No parent
+        String::new()
     }
 
     fn generate_field(&self, lines: &mut Vec<String>, field: &FieldInfo) {
@@ -1389,7 +1389,7 @@ mod tests {
     }
 
     #[test]
-    fn test_class_no_extends_has_tsclass_parent() {
+    fn test_class_no_extends_no_parent() {
         let class = ClassInfo {
             name: "MyClass".to_string(),
             comment: None,
@@ -1410,7 +1410,8 @@ mod tests {
         };
 
         let xml = generate_xml(&[class]);
-        assert!(xml.contains(r#"<bean name="MyClass" parent="TsClass">"#));
+        assert!(xml.contains(r#"<bean name="MyClass">"#));
+        assert!(!xml.contains("parent="));
     }
 
     #[test]
@@ -1492,7 +1493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_class_multiple_implements_no_extends_has_tsclass_parent() {
+    fn test_class_multiple_implements_no_extends_no_parent() {
         let class = ClassInfo {
             name: "MultiImplClass".to_string(),
             comment: None,
@@ -1513,8 +1514,9 @@ mod tests {
         };
 
         let xml = generate_xml(&[class]);
-        // Multiple implements is ambiguous, should default to TsClass
-        assert!(xml.contains(r#"<bean name="MultiImplClass" parent="TsClass">"#));
+        // Multiple implements is ambiguous, should have no parent
+        assert!(xml.contains(r#"<bean name="MultiImplClass">"#));
+        assert!(!xml.contains("parent="));
     }
 
     #[test]
@@ -1608,7 +1610,7 @@ mod tests {
     }
 
     #[test]
-    fn test_class_no_implements_no_extends_has_tsclass_parent() {
+    fn test_class_no_implements_no_extends_no_parent() {
         let class = ClassInfo {
             name: "SimpleClass".to_string(),
             comment: None,
@@ -1629,8 +1631,9 @@ mod tests {
         };
 
         let xml = generate_xml(&[class]);
-        // Backward compatibility: no implements, no extends → default to TsClass
-        assert!(xml.contains(r#"<bean name="SimpleClass" parent="TsClass">"#));
+        // No implements, no extends -> no parent
+        assert!(xml.contains(r#"<bean name="SimpleClass">"#));
+        assert!(!xml.contains("parent="));
     }
 
     #[test]
