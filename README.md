@@ -82,13 +82,18 @@ export class Monster extends BaseEntity {
 
 ### 2. 父类解析
 
-Bean 的 `parent` 属性**完全由 TypeScript 的 `extends` 关键字决定**。
+Bean 的 `parent` 属性基于 TypeScript 的继承关系：
 
 ```typescript
 class BaseEntity { public id: number; }
 class Player extends BaseEntity { public name: string; }  // parent="BaseEntity"
 class Standalone { public data: string; }                 // 无 parent
 ```
+
+**规则**：
+1. 有 `extends` → 使用 extends 的类名作为 parent
+2. 有单个 `implements` → 使用该 interface 作为 parent
+3. 无 extends 且无/多个 implements → 无 parent
 
 ### 3. 装饰器支持
 
@@ -123,7 +128,6 @@ export class TbItem {
 
 | 装饰器 | 说明 | 生成的 Luban 语法 |
 |--------|------|------------------|
-| `@Ref(TbItem)` | 引用验证 | `type="double#ref=item.TbItem"` |
 | `@Range(1, 100)` | 数值范围 | `type="double#range=[1,100]"` |
 | `@Required()` | 必填 | `type="string!"` |
 | `@Size(4)` | 固定大小 | `type="(list#size=4),double"` |
@@ -134,11 +138,28 @@ export class TbItem {
 
 **组合示例：**
 ```typescript
-@Ref(TbItem)
 @Required()
 itemId: number;
-// → type="double!#ref=item.TbItem"
+// → type="double!"
 ```
+
+#### JSDoc @ref 引用验证器
+
+使用 JSDoc `@ref` 标签标记引用字段，自动发现目标表并添加验证：
+
+```typescript
+/**
+ * @ref - 自动添加 tags="RefOverride=true"
+ */
+item: Item;  // → indexType#ref=module.ItemTable tags="RefOverride=true"
+
+/**
+ * @ref - value 引用 Skill 表
+ */
+itemToSkill: Map<RefKey<Item>, Skill>;  // RefKey<Item> 引用 Item 表的 key
+```
+
+> **注意**: `@Ref()` 装饰器已废弃，请使用 JSDoc `@ref` 代替。
 
 #### ObjectFactory<T> 泛型
 
