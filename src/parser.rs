@@ -1098,6 +1098,84 @@ impl TsParser {
             }
         }
 
+        // Check for RefKey<T> pattern (scalar) - reference type marker
+        if let TsType::TsTypeRef(type_ref) = ts_type {
+            if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                if ident.sym.to_string() == "RefKey" {
+                    if let Some(params) = &type_ref.type_params {
+                        if let Some(first) = params.params.first() {
+                            let inner_type = self.convert_type_with_params(first, type_params);
+                            return TypeInfo {
+                                field_type: inner_type.clone(),
+                                original_type,
+                                is_object_factory: false,
+                                factory_inner_type: None,
+                                is_constructor: false,
+                                constructor_inner_type: None,
+                                ref_key_inner_type: Some(inner_type),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for RefKey<T>[] pattern (array of references)
+        if let TsType::TsArrayType(arr) = ts_type {
+            if let TsType::TsTypeRef(type_ref) = &*arr.elem_type {
+                if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                    if ident.sym.to_string() == "RefKey" {
+                        if let Some(params) = &type_ref.type_params {
+                            if let Some(first) = params.params.first() {
+                                let inner_type = self.convert_type_with_params(first, type_params);
+                                return TypeInfo {
+                                    field_type: format!("list,{}", inner_type),
+                                    original_type,
+                                    is_object_factory: false,
+                                    factory_inner_type: None,
+                                    is_constructor: false,
+                                    constructor_inner_type: None,
+                                    ref_key_inner_type: Some(inner_type),
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for Array<RefKey<T>> pattern (generic array of references)
+        if let TsType::TsTypeRef(type_ref) = ts_type {
+            if let TsEntityName::Ident(ident) = &type_ref.type_name {
+                if ident.sym.to_string() == "Array" || ident.sym.to_string() == "ReadonlyArray" {
+                    if let Some(params) = &type_ref.type_params {
+                        if let Some(first) = params.params.first() {
+                            if let TsType::TsTypeRef(elem_ref) = &**first {
+                                if let TsEntityName::Ident(elem_ident) = &elem_ref.type_name {
+                                    if elem_ident.sym.to_string() == "RefKey" {
+                                        if let Some(elem_params) = &elem_ref.type_params {
+                                            if let Some(inner) = elem_params.params.first() {
+                                                let inner_type = self.convert_type_with_params(inner, type_params);
+                                                return TypeInfo {
+                                                    field_type: format!("list,{}", inner_type),
+                                                    original_type,
+                                                    is_object_factory: false,
+                                                    factory_inner_type: None,
+                                                    is_constructor: false,
+                                                    constructor_inner_type: None,
+                                                    ref_key_inner_type: Some(inner_type),
+                                                };
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Check for Constructor<T> pattern
         if let TsType::TsTypeRef(type_ref) = ts_type {
             if let TsEntityName::Ident(ident) = &type_ref.type_name {
@@ -2484,5 +2562,56 @@ export class DropConfig {
         // count without @RefReplace
         assert_eq!(class.fields[1].name, "count");
         assert_eq!(class.fields[1].ref_replace, None);
+    }
+
+    #[test]
+    fn test_parse_ref_key_scalar_and_array() {
+        let ts_code = r#"
+export class RefKeyConfig {
+    /** Scalar RefKey<T> */
+    public item: RefKey<Item>;
+
+    /** Array RefKey<T>[] */
+    public items: RefKey<Item>[];
+
+    /** Generic Array<RefKey<T>> */
+    public itemList: Array<RefKey<Item>>;
+
+    /** Normal field */
+    public count: number;
+}
+"#;
+        let mut file = NamedTempFile::with_suffix(".ts").unwrap();
+        file.write_all(ts_code.as_bytes()).unwrap();
+
+        let parser = TsParser::new();
+        let classes = parser.parse_file(file.path()).unwrap();
+
+        assert_eq!(classes.len(), 1);
+        let class = &classes[0];
+        assert_eq!(class.fields.len(), 4);
+
+        // item: RefKey<Item> -> scalar with ref_key
+        assert_eq!(class.fields[0].name, "item");
+        assert_eq!(class.fields[0].field_type, "Item");
+        assert!(class.fields[0].validators.has_ref_key);
+        assert_eq!(class.fields[0].ref_key_inner_type, Some("Item".to_string()));
+
+        // items: RefKey<Item>[] -> list with ref_key
+        assert_eq!(class.fields[1].name, "items");
+        assert_eq!(class.fields[1].field_type, "list,Item");
+        assert!(class.fields[1].validators.has_ref_key);
+        assert_eq!(class.fields[1].ref_key_inner_type, Some("Item".to_string()));
+
+        // itemList: Array<RefKey<Item>> -> list with ref_key
+        assert_eq!(class.fields[2].name, "itemList");
+        assert_eq!(class.fields[2].field_type, "list,Item");
+        assert!(class.fields[2].validators.has_ref_key);
+        assert_eq!(class.fields[2].ref_key_inner_type, Some("Item".to_string()));
+
+        // count: number -> normal field
+        assert_eq!(class.fields[3].name, "count");
+        assert!(!class.fields[3].validators.has_ref_key);
+        assert_eq!(class.fields[3].ref_key_inner_type, None);
     }
 }

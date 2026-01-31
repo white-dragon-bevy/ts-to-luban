@@ -707,8 +707,9 @@ impl<'a> XmlGenerator<'a> {
         is_optional: bool,
         default_value: Option<&str>,
     ) -> String {
-        // Handle @ref - replace type with target table's index type
-        let effective_type = if validators.has_ref {
+        // Handle @ref or RefKey<T> - replace type with target table's index type
+        let has_any_ref = validators.has_ref || validators.has_ref_key;
+        let effective_type = if has_any_ref {
             let type_name = base_type.split('.').last().unwrap_or(base_type);
             if let Some(table_config) = self.table_registry.get_table_by_class(type_name) {
                 table_config.index_type.clone().unwrap_or_else(|| base_type.to_string())
@@ -734,8 +735,8 @@ impl<'a> XmlGenerator<'a> {
         // Collect validator suffixes
         let mut validator_parts = Vec::new();
 
-        // Handle @ref - auto-discover target table from base_type
-        if validators.has_ref {
+        // Handle @ref or RefKey<T> - auto-discover target table from base_type
+        if has_any_ref {
             let type_name = base_type.split('.').last().unwrap_or(base_type);
             if let Some(table_config) = self.table_registry.get_table_by_class(type_name) {
                 let table_ref = if table_config.module.is_empty() {
@@ -885,8 +886,9 @@ impl<'a> XmlGenerator<'a> {
 
         // For list/array/set types
         // Build element type with its validators (ref, range, set, required)
+        // Note: has_ref_key for list means RefKey<T>[] or Array<RefKey<T>>
         let element_validators = FieldValidators {
-            has_ref: validators.has_ref,
+            has_ref: validators.has_ref || validators.has_ref_key, // Both @ref and RefKey<T> apply to element
             has_ref_key: false,
             range: validators.range,
             required: validators.required,
@@ -3243,6 +3245,203 @@ mod tests {
         assert!(
             xml.contains(r#"type="set,int#ref=items.TbItem""#),
             "Should generate ref validator for set element. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_ref_key_scalar_generates_ref_validator() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "RefKeyScalarConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![FieldInfo {
+                name: "item".to_string(),
+                field_type: "Item".to_string(),
+                comment: None,
+                alias: None,
+                is_optional: false,
+                validators: FieldValidators {
+                    has_ref_key: true, // RefKey<Item>
+                    ..Default::default()
+                },
+                is_object_factory: false,
+                factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
+                original_type: "RefKey<Item>".to_string(),
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
+                custom_tags: None,
+                ref_key_inner_type: Some("Item".to_string()),
+                ref_replace: None,
+            }],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with Item table
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "items.Item".to_string(),
+            TableConfig::Full {
+                input: "../datas/items".to_string(),
+                name: Some("TbItem".to_string()),
+                mode: None,
+                index: Some("id".to_string()),
+            },
+        );
+        let mut table_registry = TableRegistry::from_config(&tables_config);
+
+        // Set index type for Item table
+        let item_class = ClassInfo {
+            name: "Item".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("id", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        table_registry.set_index_types(&[item_class], &type_mapper);
+
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "items");
+
+        // Should generate int#ref=items.TbItem (int is the index type)
+        // Note: RefKey<T> does NOT add RefOverride=true tag (unlike @ref)
+        assert!(
+            xml.contains(r#"type="int#ref=items.TbItem""#),
+            "RefKey<T> scalar should generate ref validator. Got:\n{}",
+            xml
+        );
+        // Should NOT have RefOverride tag
+        assert!(
+            !xml.contains(r#"tags="RefOverride=true""#),
+            "RefKey<T> should NOT add RefOverride tag. Got:\n{}",
+            xml
+        );
+    }
+
+    #[test]
+    fn test_ref_key_array_generates_ref_validator() {
+        use crate::config::TableConfig;
+
+        let class = ClassInfo {
+            name: "RefKeyArrayConfig".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![FieldInfo {
+                name: "items".to_string(),
+                field_type: "list,Item".to_string(),
+                comment: None,
+                alias: None,
+                is_optional: false,
+                validators: FieldValidators {
+                    has_ref_key: true, // RefKey<Item>[]
+                    ..Default::default()
+                },
+                is_object_factory: false,
+                factory_inner_type: None,
+                is_constructor: false,
+                constructor_inner_type: None,
+                original_type: "RefKey<Item>[]".to_string(),
+                default_value: None,
+                type_override: None,
+                separator: None,
+                map_separator: None,
+                custom_tags: None,
+                ref_key_inner_type: Some("Item".to_string()),
+                ref_replace: None,
+            }],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: false,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        // Build table registry with Item table
+        let mut tables_config = std::collections::HashMap::new();
+        tables_config.insert(
+            "items.Item".to_string(),
+            TableConfig::Full {
+                input: "../datas/items".to_string(),
+                name: Some("TbItem".to_string()),
+                mode: None,
+                index: Some("id".to_string()),
+            },
+        );
+        let mut table_registry = TableRegistry::from_config(&tables_config);
+
+        // Set index type for Item table
+        let item_class = ClassInfo {
+            name: "Item".to_string(),
+            comment: None,
+            alias: None,
+            fields: vec![make_field("id", "int", false)],
+            implements: vec![],
+            extends: None,
+            source_file: "test.ts".to_string(),
+            file_hash: "abc123".to_string(),
+            is_interface: true,
+            output_path: None,
+            module_name: Some("items".to_string()),
+            type_params: std::collections::HashMap::new(),
+            luban_table: None,
+            table_config: None,
+            input_path: None,
+            imports: ImportMap::new(),
+        };
+
+        let type_mapper = TypeMapper::new(&std::collections::HashMap::new());
+        table_registry.set_index_types(&[item_class], &type_mapper);
+
+        let generator = XmlGenerator::new(&type_mapper, &table_registry);
+        let xml = generator.generate(&[class], "items");
+
+        // Should generate list,int#ref=items.TbItem
+        assert!(
+            xml.contains(r#"type="list,int#ref=items.TbItem""#),
+            "RefKey<T>[] should generate ref validator for list element. Got:\n{}",
+            xml
+        );
+        // Should NOT have RefOverride tag
+        assert!(
+            !xml.contains(r#"tags="RefOverride=true""#),
+            "RefKey<T>[] should NOT add RefOverride tag. Got:\n{}",
             xml
         );
     }
