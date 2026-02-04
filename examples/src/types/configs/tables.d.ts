@@ -1,5 +1,5 @@
-import { CharacterConfig } from "../../__examples__/constructor-type";
 import { LeaderboardEntry, GameConfig, ServerSettings } from "../../__examples__/table-modes";
+import { CharacterConfig } from "../../__examples__/constructor-type";
 import { Weapon, Armor } from "../../__examples__/items";
 
 export interface AllTables {

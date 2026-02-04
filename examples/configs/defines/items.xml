@@ -1,7 +1,7 @@
 <module name="items" comment="自动生成的 ts class Bean 定义">
 
     <!-- 武器配置 -->
-    <bean name="Weapon" alias="武器" parent="TsClass" comment="武器配置">
+    <bean name="Weapon" alias="武器" comment="武器配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
         <var name="damage" type="double#range=[1,100]"/>
@@ -9,14 +9,14 @@
     </bean>
 
     <!-- 防具配置 -->
-    <bean name="Armor" alias="防具" parent="TsClass" comment="防具配置">
+    <bean name="Armor" alias="防具" comment="防具配置">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
         <var name="defense" type="double#range=[1,500]"/>
     </bean>
 
     <!-- 装备套装 -->
-    <bean name="EquipmentSet" parent="TsClass" comment="装备套装">
+    <bean name="EquipmentSet" comment="装备套装">
         <var name="weaponId" type="double"/>
         <var name="armorId" type="double"/>
     </bean>

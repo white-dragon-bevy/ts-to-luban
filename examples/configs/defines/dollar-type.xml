@@ -1,7 +1,7 @@
 <module name="dollar_type" comment="自动生成的 ts class Bean 定义">
 
     <!-- $type&lt;T&gt; 类型包装器示例 $type&lt;T&gt; 会在生成时提取内部类型 T，忽略 $type 包装器 -->
-    <bean name="BaseEntity" parent="TsClass" comment="$type&lt;T&gt; 类型包装器示例 $type&lt;T&gt; 会在生成时提取内部类型 T，忽略 $type 包装器">
+    <bean name="BaseEntity" comment="$type&lt;T&gt; 类型包装器示例 $type&lt;T&gt; 会在生成时提取内部类型 T，忽略 $type 包装器">
         <var name="id" type="double"/>
         <var name="name" type="string"/>
     </bean>
@@ -15,7 +15,7 @@
     </bean>
 
     <!-- 使用 $type&lt;T&gt; 包装器的配置类 -->
-    <bean name="EntityConfig" parent="TsClass" comment="使用 $type&lt;T&gt; 包装器的配置类">
+    <bean name="EntityConfig" comment="使用 $type&lt;T&gt; 包装器的配置类">
         <var name="entityType" type="BaseEntity" comment="实体类型 - 使用 $type 包装"/>
         <var name="entities" type="list,BaseEntity" comment="实体列表"/>
         <var name="entityMap" type="map,string,BaseEntity" comment="实体映射"/>
@@ -23,7 +23,7 @@
     </bean>
 
     <!-- 嵌套使用示例 -->
-    <bean name="ComplexConfig" parent="TsClass" comment="嵌套使用示例">
+    <bean name="ComplexConfig" comment="嵌套使用示例">
         <var name="heroType" type="Hero" comment="英雄类型"/>
         <var name="enemyType" type="Enemy" comment="敌人类型"/>
         <var name="mixedList" type="list,BaseEntity" comment="混合列表"/>

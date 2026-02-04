@@ -1,7 +1,7 @@
 <module name="inheritance" comment="自动生成的 ts class Bean 定义">
 
     <!-- 基础单位 -->
-    <bean name="BaseUnit" parent="TsClass" comment="基础单位">
+    <bean name="BaseUnit" comment="基础单位">
         <var name="id" type="double"/>
         <var name="name" type="string!"/>
     </bean>
@@ -24,7 +24,7 @@
     </bean>
 
     <!-- 独立单位 - 无继承 -->
-    <bean name="StandaloneUnit" parent="TsClass" comment="独立单位 - 无继承">
+    <bean name="StandaloneUnit" comment="独立单位 - 无继承">
         <var name="data" type="string"/>
     </bean>
 

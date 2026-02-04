@@ -74,16 +74,21 @@ impl<'a> TsCodeGenerator<'a> {
         let content = tables_gen.generate(&table_classes, &tables_path);
         std::fs::write(&tables_path, content)?;
 
-        // Generate beans.ts with all classes
+        // Generate beans.ts (and beans_N.ts if needed) with all classes
         let all_class_refs: Vec<_> = self.classes.iter().collect();
         let beans_gen = BeansGenerator::new(&self.import_resolver);
         let beans_path = self.output_path.join("beans.ts");
-        let beans_content = beans_gen.generate(
+        let beans_files = beans_gen.generate(
             &all_class_refs,
             &beans_path,
             self.get_default_module_name(),
         );
-        std::fs::write(&beans_path, beans_content)?;
+        
+        // Write all beans files
+        for beans_file in beans_files {
+            let file_path = self.output_path.join(&beans_file.filename);
+            std::fs::write(&file_path, &beans_file.content)?;
+        }
 
         Ok(())
     }
